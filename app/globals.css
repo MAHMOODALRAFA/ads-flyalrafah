@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/* Base font */
+body {
+  font-family: var(--font-arabic), system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+/* Better Arabic rendering */
+html {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+@keyframes fly-marquee {
+  0%   { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+.fly-marquee {
+  animation: fly-marquee 200s linear infinite;
+  will-change: transform;
+}
