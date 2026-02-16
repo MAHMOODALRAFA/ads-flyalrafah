@@ -9,29 +9,27 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(cuid())
-  phone       String   @unique
-  name        String?
+  id        String   @id @default(cuid())
+  phone     String   @unique
+  name      String?
   destination String?
-  refCode     String   @unique
-  points      Int      @default(0)
+  refCode   String   @unique
+  points    Int      @default(0)
 
-  // ✅ cooldown share
   lastShareAt DateTime?
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   referralsGiven Referral[] @relation("ReferralsGiven")
 }
 
 model Referral {
   id            String   @id @default(cuid())
-
   referrerId    String
   referrer      User     @relation("ReferralsGiven", fields: [referrerId], references: [id])
 
-  referredPhone String   @unique // ✅ هر شماره دوست فقط یک بار امتیاز میده
+  referredPhone String   @unique
 
   createdAt     DateTime @default(now())
 }
