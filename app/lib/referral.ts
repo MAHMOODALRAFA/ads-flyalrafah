@@ -1,28 +1,28 @@
 // app/lib/referral.ts
+"use client";
 
 const REF_CODE_KEY = "flyalrafah_ref_code";
 const SHARE_COUNT_KEY = "flyalrafah_share_count";
 const PHONE_KEY = "flyalrafah_phone";
 const DISCOUNT_KEY = "flyalrafah_discount_code";
 
-// ✅ Session TTL
+// session
 const STARTED_AT_KEY = "flyalrafah_started_at";
-const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
+const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour (sliding)
 
-// ✅ امضا: کلیدهای داخلی
+// anti-tamper (soft)
 const DEVICE_ID_KEY = "flyalrafah_device_id";
 const SIG_SUFFIX = "__sig";
-
-// ✅ عدد ثابت فلو
-export const REQUIRED_SHARES = 3;
-
-/**
- * ⚠️ امنیت نرم (anti-tamper)
- * secret داخل فرانت است، ولی برای جلوگیری از دستکاری ساده localStorage خوبه
- */
 const SECRET = "flyalrafah_v1_secret_2026";
 
-/** -------------------- Utils -------------------- */
+// share logic
+export const REQUIRED_SHARES = 3;
+
+// cooldown (optional)
+const LAST_SHARE_TS_KEY = "flyalrafah_last_share_ts";
+const SHARE_COOLDOWN_MS = 20_000;
+
+/** -------------------- helpers -------------------- */
 
 function randomCode(len = 5) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -31,14 +31,13 @@ function randomCode(len = 5) {
   return out;
 }
 
-// ✅ FNV-1a 32-bit (بدون BigInt) -> base36
+// FNV-1a 32-bit -> base36
 function fnv1a32(str: string) {
-  let hash = 0x811c9dc5; // offset basis
+  let hash = 0x811c9dc5;
   for (let i = 0; i < str.length; i++) {
     hash ^= str.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193); // prime
+    hash = Math.imul(hash, 0x01000193);
   }
-  // unsigned 32-bit
   return (hash >>> 0).toString(36);
 }
 
@@ -52,10 +51,13 @@ function getOrCreateDeviceId(): string {
   return id;
 }
 
+export function getDeviceId(): string {
+  return getOrCreateDeviceId();
+}
+
 function sign(key: string, value: string) {
   const deviceId = getOrCreateDeviceId();
-  const payload = `${SECRET}|${deviceId}|${key}|${value}`;
-  return fnv1a32(payload);
+  return fnv1a32(`${SECRET}|${deviceId}|${key}|${value}`);
 }
 
 function sigKey(key: string) {
@@ -70,7 +72,7 @@ function readSigned(key: string, fallback: string): string {
 
   const savedSig = localStorage.getItem(sigKey(key));
 
-  // ✅ migrate اگر قبلاً بدون امضا ذخیره شده بود
+  // migrate: if no signature existed before
   if (!savedSig) {
     localStorage.setItem(sigKey(key), sign(key, raw));
     return raw;
@@ -104,27 +106,24 @@ function isExpired(startedAtMs: number) {
 }
 
 function touchSession() {
-  // Sliding session: هر بار استفاده، تمدید
   writeSigned(STARTED_AT_KEY, String(nowMs()));
 }
 
-/** -------------------- Phone + Session -------------------- */
+/** -------------------- phone + session -------------------- */
+
+export function setPhone(phone: string) {
+  writeSigned(PHONE_KEY, phone);
+  touchSession();
+}
 
 export function getPhone(): string {
-  // ✅ اگر سشن منقضی شد → خروج
   if (!hasStarted()) return "";
-
   const v = readSigned(PHONE_KEY, "");
   if (v === "__TAMPERED__") {
     removeSigned(PHONE_KEY);
     return "";
   }
   return v;
-}
-
-export function setPhone(phone: string) {
-  writeSigned(PHONE_KEY, phone);
-  touchSession(); // ✅ شروع/تمدید سشن
 }
 
 export function hasStarted(): boolean {
@@ -142,7 +141,7 @@ export function hasStarted(): boolean {
 
   const startedAt = Number(startedAtRaw || "0");
 
-  // ✅ سازگاری با داده‌های قدیمی: اگر startedAt نداریم، بساز
+  // backward compatible: if missing startedAt, create it
   if (!startedAt) {
     touchSession();
     return true;
@@ -153,12 +152,12 @@ export function hasStarted(): boolean {
     return false;
   }
 
-  // ✅ Sliding تمدید
+  // sliding session
   touchSession();
   return true;
 }
 
-/** -------------------- Ref Code -------------------- */
+/** -------------------- ref code -------------------- */
 
 export function getRefCode(): string {
   if (typeof window === "undefined") return "XXXX";
@@ -168,10 +167,9 @@ export function getRefCode(): string {
     removeSigned(REF_CODE_KEY);
     return "XXXX";
   }
-
   if (saved) return saved;
 
-  const code = randomCode(5);
+  const code = randomCode(6);
   writeSigned(REF_CODE_KEY, code);
   return code;
 }
@@ -180,71 +178,23 @@ export function resetRefCode() {
   removeSigned(REF_CODE_KEY);
 }
 
-/** -------------------- Share Count -------------------- */
+/** -------------------- share count -------------------- */
 
 export function getShareCount(): number {
   const v = readSigned(SHARE_COUNT_KEY, "0");
-
   if (v === "__TAMPERED__") {
     writeSigned(SHARE_COUNT_KEY, "0");
     return 0;
   }
-
   const n = Number(v || "0");
   return Number.isFinite(n) ? n : 0;
 }
 
-export function increaseShareCount(): number {
-  const next = getShareCount() + 1;
+export function setShareCount(count: number): number {
+  const next = Math.max(0, Math.floor(count));
   writeSigned(SHARE_COUNT_KEY, String(next));
   return next;
 }
-
-export function resetShareCount() {
-  writeSigned(SHARE_COUNT_KEY, "0");
-}
-
-export function isUnlocked(): boolean {
-  return getShareCount() >= REQUIRED_SHARES;
-}
-
-/** -------------------- Discount Code -------------------- */
-
-function makeDiscountCode() {
-  return `FLY-${randomCode(5)}`;
-}
-
-export function getOrCreateDiscountCode(): string {
-  if (typeof window === "undefined") return "FLY-XXXXX";
-
-  const saved = readSigned(DISCOUNT_KEY, "");
-  if (saved === "__TAMPERED__") {
-    removeSigned(DISCOUNT_KEY);
-  } else if (saved) {
-    return saved.toUpperCase();
-  }
-
-  const code = makeDiscountCode();
-  writeSigned(DISCOUNT_KEY, code);
-  return code;
-}
-
-export function resetDiscountCode() {
-  removeSigned(DISCOUNT_KEY);
-}
-
-/** -------------------- Optional: Discount Amount Logic -------------------- */
-
-export function computeDiscountAmount(shareCount: number): number {
-  if (shareCount >= 3) return 3;
-  if (shareCount >= 1) return 2;
-  return 0;
-}
-
-/** -------------------- Cooldown ضد اسپم (اختیاری) -------------------- */
-
-const LAST_SHARE_TS_KEY = "flyalrafah_last_share_ts";
-const SHARE_COOLDOWN_MS = 20_000;
 
 export function canIncreaseShareNow(): boolean {
   if (typeof window === "undefined") return true;
@@ -263,11 +213,85 @@ export function markShareNow() {
   writeSigned(LAST_SHARE_TS_KEY, String(Date.now()));
 }
 
-export function resetShareCooldown() {
-  removeSigned(LAST_SHARE_TS_KEY);
+export function increaseShareCount(): number {
+  // optional cooldown
+  if (!canIncreaseShareNow()) return getShareCount();
+
+  const next = getShareCount() + 1;
+  writeSigned(SHARE_COUNT_KEY, String(next));
+  markShareNow();
+  return next;
 }
 
-/** -------------------- Full Reset -------------------- */
+export function resetShareCount() {
+  writeSigned(SHARE_COUNT_KEY, "0");
+}
+
+export function isUnlocked(): boolean {
+  return getShareCount() >= REQUIRED_SHARES;
+}
+
+/** -------------------- discount -------------------- */
+
+export function makeCoupon(code: string) {
+  const safe = (code || "XXXX").toUpperCase().slice(0, 6);
+  return `FLY-${safe}`;
+}
+
+function makeDiscountCode() {
+  return `FLY-${randomCode(6)}`;
+}
+
+export function getOrCreateDiscountCode(): string {
+  if (typeof window === "undefined") return "FLY-XXXXXX";
+
+  const saved = readSigned(DISCOUNT_KEY, "");
+  if (saved === "__TAMPERED__") {
+    removeSigned(DISCOUNT_KEY);
+  } else if (saved) {
+    return saved.toUpperCase();
+  }
+
+  const code = makeDiscountCode();
+  writeSigned(DISCOUNT_KEY, code);
+  return code;
+}
+
+export function resetDiscountCode() {
+  removeSigned(DISCOUNT_KEY);
+}
+
+export function computeDiscountAmount(shareCount: number): number {
+  if (shareCount >= 3) return 3;
+  if (shareCount >= 1) return 2;
+  return 0;
+}
+
+/** -------------------- optional: verify all or reset -------------------- */
+
+export function verifyReferralOrReset(): {
+  tampered: boolean;
+  refCode: string;
+  shareCount: number;
+} {
+  if (typeof window === "undefined") return { tampered: false, refCode: "", shareCount: 0 };
+
+  const rc = readSigned(REF_CODE_KEY, "");
+  const sc = readSigned(SHARE_COUNT_KEY, "0");
+
+  const tampered = rc === "__TAMPERED__" || sc === "__TAMPERED__";
+  if (tampered) {
+    // reset only referral bits
+    resetRefCode();
+    resetShareCount();
+    resetDiscountCode();
+    removeSigned(LAST_SHARE_TS_KEY);
+  }
+
+  return { tampered, refCode: getRefCode(), shareCount: getShareCount() };
+}
+
+/** -------------------- full reset -------------------- */
 
 export function resetAll() {
   removeSigned(PHONE_KEY);
@@ -278,6 +302,6 @@ export function resetAll() {
   removeSigned(DISCOUNT_KEY);
   removeSigned(LAST_SHARE_TS_KEY);
 
-  // اگر خواستی ریست کامل دستگاه هم بشه:
+  // optional:
   // localStorage.removeItem(DEVICE_ID_KEY);
 }

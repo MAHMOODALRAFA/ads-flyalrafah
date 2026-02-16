@@ -1,150 +1,307 @@
 // app/lib/referral.ts
+"use client";
 
 const REF_CODE_KEY = "flyalrafah_ref_code";
 const SHARE_COUNT_KEY = "flyalrafah_share_count";
+const PHONE_KEY = "flyalrafah_phone";
+const DISCOUNT_KEY = "flyalrafah_discount_code";
 
-// ✅ signature keys (anti-tamper)
-const SIG_KEY = "flyalrafah_sig_v1";
+// session
+const STARTED_AT_KEY = "flyalrafah_started_at";
+const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour (sliding)
 
-// ⚠️ این فقط برای سخت‌تر کردن تقلب است (امنیت واقعی با سرور میاد)
-const SALT = "flyalrafah_local_sig_v1_salt";
+// anti-tamper (soft)
+const DEVICE_ID_KEY = "flyalrafah_device_id";
+const SIG_SUFFIX = "__sig";
+const SECRET = "flyalrafah_v1_secret_2026";
 
-export function generateCode(len = 5) {
+// share logic
+export const REQUIRED_SHARES = 3;
+
+// cooldown (optional)
+const LAST_SHARE_TS_KEY = "flyalrafah_last_share_ts";
+const SHARE_COOLDOWN_MS = 20_000;
+
+/** -------------------- helpers -------------------- */
+
+function randomCode(len = 5) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let out = "";
   for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
   return out;
 }
 
-function safeNumber(v: unknown, fallback = 0) {
-  const n = typeof v === "string" ? Number(v) : (v as number);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-// --- SHA256 helpers (Web Crypto) ---
-async function sha256(input: string) {
-  const enc = new TextEncoder().encode(input);
-  const buf = await crypto.subtle.digest("SHA-256", enc);
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function makeSignature(refCode: string, shareCount: number) {
-  return sha256(`${refCode}|${shareCount}|${SALT}`);
-}
-
-async function signState(refCode: string, shareCount: number) {
-  const sig = await makeSignature(refCode, shareCount);
-  localStorage.setItem(SIG_KEY, sig);
-}
-
-async function verifyState(refCode: string, shareCount: number) {
-  const sig = localStorage.getItem(SIG_KEY);
-  if (!sig) return false;
-  const expected = await makeSignature(refCode, shareCount);
-  return sig === expected;
-}
-
-// ✅ استفاده در صفحات: وقتی صفحه لود شد، اینو صدا بزن
-// اگر دستکاری شده بود، shareCount رو صفر می‌کنه و دوباره امضا می‌زنه
-export async function verifyReferralOrReset(): Promise<{
-  tampered: boolean;
-  refCode: string;
-  shareCount: number;
-}> {
-  if (typeof window === "undefined") {
-    return { tampered: false, refCode: "", shareCount: 0 };
+// FNV-1a 32-bit -> base36
+function fnv1a32(str: string) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
   }
-
-  const refCode = getRefCode(); // مطمئن میشه refCode وجود داره
-  const shareCount = getShareCount();
-
-  const ok = await verifyState(refCode, shareCount);
-  if (ok) return { tampered: false, refCode, shareCount };
-
-  // اگر sig نبود یا غلط بود → احتمال دستکاری
-  localStorage.setItem(SHARE_COUNT_KEY, "0");
-  await signState(refCode, 0);
-
-  return { tampered: true, refCode, shareCount: 0 };
+  return (hash >>> 0).toString(36);
 }
 
-export function getRefCode(): string {
-  if (typeof window === "undefined") return "";
-  const saved = localStorage.getItem(REF_CODE_KEY);
+function getOrCreateDeviceId(): string {
+  if (typeof window === "undefined") return "server";
+  const saved = localStorage.getItem(DEVICE_ID_KEY);
   if (saved) return saved;
 
-  const code = generateCode();
-  localStorage.setItem(REF_CODE_KEY, code);
+  const id = `dev_${randomCode(10)}_${Date.now().toString(36)}`;
+  localStorage.setItem(DEVICE_ID_KEY, id);
+  return id;
+}
 
-  // اولین امضا (با shareCount فعلی)
-  const sc = safeNumber(localStorage.getItem(SHARE_COUNT_KEY), 0);
-  void signState(code, sc);
+export function getDeviceId(): string {
+  return getOrCreateDeviceId();
+}
 
+function sign(key: string, value: string) {
+  const deviceId = getOrCreateDeviceId();
+  return fnv1a32(`${SECRET}|${deviceId}|${key}|${value}`);
+}
+
+function sigKey(key: string) {
+  return `${key}${SIG_SUFFIX}`;
+}
+
+function readSigned(key: string, fallback: string): string {
+  if (typeof window === "undefined") return fallback;
+
+  const raw = localStorage.getItem(key);
+  if (!raw) return fallback;
+
+  const savedSig = localStorage.getItem(sigKey(key));
+
+  // migrate: if no signature existed before
+  if (!savedSig) {
+    localStorage.setItem(sigKey(key), sign(key, raw));
+    return raw;
+  }
+
+  const expected = sign(key, raw);
+  if (expected !== savedSig) return "__TAMPERED__";
+
+  return raw;
+}
+
+function writeSigned(key: string, value: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(key, value);
+  localStorage.setItem(sigKey(key), sign(key, value));
+}
+
+function removeSigned(key: string) {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(key);
+  localStorage.removeItem(sigKey(key));
+}
+
+function nowMs() {
+  return Date.now();
+}
+
+function isExpired(startedAtMs: number) {
+  if (!startedAtMs) return false;
+  return nowMs() - startedAtMs > SESSION_TTL_MS;
+}
+
+function touchSession() {
+  writeSigned(STARTED_AT_KEY, String(nowMs()));
+}
+
+/** -------------------- phone + session -------------------- */
+
+export function setPhone(phone: string) {
+  writeSigned(PHONE_KEY, phone);
+  touchSession();
+}
+
+export function getPhone(): string {
+  if (!hasStarted()) return "";
+  const v = readSigned(PHONE_KEY, "");
+  if (v === "__TAMPERED__") {
+    removeSigned(PHONE_KEY);
+    return "";
+  }
+  return v;
+}
+
+export function hasStarted(): boolean {
+  const phone = readSigned(PHONE_KEY, "");
+  if (!phone || phone === "__TAMPERED__") {
+    if (phone === "__TAMPERED__") removeSigned(PHONE_KEY);
+    return false;
+  }
+
+  const startedAtRaw = readSigned(STARTED_AT_KEY, "0");
+  if (startedAtRaw === "__TAMPERED__") {
+    resetAll();
+    return false;
+  }
+
+  const startedAt = Number(startedAtRaw || "0");
+
+  // backward compatible: if missing startedAt, create it
+  if (!startedAt) {
+    touchSession();
+    return true;
+  }
+
+  if (isExpired(startedAt)) {
+    resetAll();
+    return false;
+  }
+
+  // sliding session
+  touchSession();
+  return true;
+}
+
+/** -------------------- ref code -------------------- */
+
+export function getRefCode(): string {
+  if (typeof window === "undefined") return "XXXX";
+
+  const saved = readSigned(REF_CODE_KEY, "");
+  if (saved === "__TAMPERED__") {
+    removeSigned(REF_CODE_KEY);
+    return "XXXX";
+  }
+  if (saved) return saved;
+
+  const code = randomCode(6);
+  writeSigned(REF_CODE_KEY, code);
   return code;
 }
 
-export function getShareCount(): number {
-  if (typeof window === "undefined") return 0;
-  return safeNumber(localStorage.getItem(SHARE_COUNT_KEY), 0);
+export function resetRefCode() {
+  removeSigned(REF_CODE_KEY);
 }
 
-// ✅ اگر خواستی مستقیم set کنی
+/** -------------------- share count -------------------- */
+
+export function getShareCount(): number {
+  const v = readSigned(SHARE_COUNT_KEY, "0");
+  if (v === "__TAMPERED__") {
+    writeSigned(SHARE_COUNT_KEY, "0");
+    return 0;
+  }
+  const n = Number(v || "0");
+  return Number.isFinite(n) ? n : 0;
+}
+
 export function setShareCount(count: number): number {
-  if (typeof window === "undefined") return 0;
-  const refCode = getRefCode();
   const next = Math.max(0, Math.floor(count));
-  localStorage.setItem(SHARE_COUNT_KEY, String(next));
-  void signState(refCode, next);
+  writeSigned(SHARE_COUNT_KEY, String(next));
   return next;
+}
+
+export function canIncreaseShareNow(): boolean {
+  if (typeof window === "undefined") return true;
+
+  const v = readSigned(LAST_SHARE_TS_KEY, "0");
+  if (v === "__TAMPERED__") {
+    writeSigned(LAST_SHARE_TS_KEY, "0");
+    return true;
+  }
+
+  const last = Number(v || "0");
+  return Date.now() - last >= SHARE_COOLDOWN_MS;
+}
+
+export function markShareNow() {
+  writeSigned(LAST_SHARE_TS_KEY, String(Date.now()));
 }
 
 export function increaseShareCount(): number {
-  if (typeof window === "undefined") return 0;
+  // optional cooldown
+  if (!canIncreaseShareNow()) return getShareCount();
 
-  const refCode = getRefCode();
   const next = getShareCount() + 1;
-
-  localStorage.setItem(SHARE_COUNT_KEY, String(next));
-
-  // امضا رو هم آپدیت کن (بدون await)
-  void signState(refCode, next);
-
+  writeSigned(SHARE_COUNT_KEY, String(next));
+  markShareNow();
   return next;
 }
 
-export function resetReferral() {
-  if (typeof window === "undefined") return;
-
-  const refCode = getRefCode();
-  localStorage.setItem(SHARE_COUNT_KEY, "0");
-  void signState(refCode, 0);
+export function resetShareCount() {
+  writeSigned(SHARE_COUNT_KEY, "0");
 }
+
+export function isUnlocked(): boolean {
+  return getShareCount() >= REQUIRED_SHARES;
+}
+
+/** -------------------- discount -------------------- */
 
 export function makeCoupon(code: string) {
   const safe = (code || "XXXX").toUpperCase().slice(0, 6);
   return `FLY-${safe}`;
 }
 
-export function getDeviceId(): string {
-  // اگر قبلاً داخل فایل‌ات getOrCreateDeviceId داری همان را صدا بزن
-  // (در نسخه‌ای که برات نوشتم، getOrCreateDeviceId داخلی بود)
-  // پس همین تابع را داخل همان فایل، زیر util ها قرار بده و این را export کن.
+function makeDiscountCode() {
+  return `FLY-${randomCode(6)}`;
+}
 
-  if (typeof window === "undefined") return "server";
-  const key = "flyalrafah_device_id";
-  const saved = localStorage.getItem(key);
-  if (saved) return saved;
+export function getOrCreateDiscountCode(): string {
+  if (typeof window === "undefined") return "FLY-XXXXXX";
 
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const rnd = (len = 10) => {
-    let out = "";
-    for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
-    return out;
-  };
+  const saved = readSigned(DISCOUNT_KEY, "");
+  if (saved === "__TAMPERED__") {
+    removeSigned(DISCOUNT_KEY);
+  } else if (saved) {
+    return saved.toUpperCase();
+  }
 
-  const id = `dev_${rnd(10)}_${Date.now().toString(36)}`;
-  localStorage.setItem(key, id);
-  return id;
+  const code = makeDiscountCode();
+  writeSigned(DISCOUNT_KEY, code);
+  return code;
+}
+
+export function resetDiscountCode() {
+  removeSigned(DISCOUNT_KEY);
+}
+
+export function computeDiscountAmount(shareCount: number): number {
+  if (shareCount >= 3) return 3;
+  if (shareCount >= 1) return 2;
+  return 0;
+}
+
+/** -------------------- optional: verify all or reset -------------------- */
+
+export function verifyReferralOrReset(): {
+  tampered: boolean;
+  refCode: string;
+  shareCount: number;
+} {
+  if (typeof window === "undefined") return { tampered: false, refCode: "", shareCount: 0 };
+
+  const rc = readSigned(REF_CODE_KEY, "");
+  const sc = readSigned(SHARE_COUNT_KEY, "0");
+
+  const tampered = rc === "__TAMPERED__" || sc === "__TAMPERED__";
+  if (tampered) {
+    // reset only referral bits
+    resetRefCode();
+    resetShareCount();
+    resetDiscountCode();
+    removeSigned(LAST_SHARE_TS_KEY);
+  }
+
+  return { tampered, refCode: getRefCode(), shareCount: getShareCount() };
+}
+
+/** -------------------- full reset -------------------- */
+
+export function resetAll() {
+  removeSigned(PHONE_KEY);
+  removeSigned(STARTED_AT_KEY);
+
+  removeSigned(REF_CODE_KEY);
+  removeSigned(SHARE_COUNT_KEY);
+  removeSigned(DISCOUNT_KEY);
+  removeSigned(LAST_SHARE_TS_KEY);
+
+  // optional:
+  // localStorage.removeItem(DEVICE_ID_KEY);
 }

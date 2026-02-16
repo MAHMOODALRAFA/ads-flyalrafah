@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_DIRECT_URL")
 }
 
 model User {
@@ -15,7 +16,7 @@ model User {
   refCode     String   @unique
   points      Int      @default(0)
 
-  // ✅ برای cooldown share
+  // ✅ cooldown share
   lastShareAt DateTime?
 
   createdAt   DateTime @default(now())
@@ -24,12 +25,13 @@ model User {
   referralsGiven Referral[] @relation("ReferralsGiven")
 }
 
- model Referral {
+model Referral {
   id            String   @id @default(cuid())
 
   referrerId    String
   referrer      User     @relation("ReferralsGiven", fields: [referrerId], references: [id])
 
-  referredPhone String   @unique  // ✅ هر شماره دوست فقط یک بار امتیاز میده
+  referredPhone String   @unique // ✅ هر شماره دوست فقط یک بار امتیاز میده
+
   createdAt     DateTime @default(now())
 }
