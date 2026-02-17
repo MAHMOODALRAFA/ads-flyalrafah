@@ -12,12 +12,21 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-@keyframes fly-marquee {
-  0%   { transform: translateX(100%); }
-  100% { transform: translateX(-100%); }
+
+/* ✅ Winners Marquee (Infinite Loop) */
+@keyframes flyMarquee {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
 }
 
 .fly-marquee {
-  animation: fly-marquee 200s linear infinite;
+  display: flex;
+  width: max-content;
+  white-space: nowrap;
   will-change: transform;
+  animation: flyMarquee 25s linear infinite;
 }

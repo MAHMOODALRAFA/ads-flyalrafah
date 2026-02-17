@@ -139,7 +139,7 @@ export default function HomePage() {
       "الفائزون هذا الشهر: سالم — خصم 10 ريال ✨",
       "الفائزون هذا الشهر: نورة — قسيمة 50 ريال 🎁",
     ];
-    return [...items, ...items, ...items].join("   •   ");
+return items.join("   •   ");
   }, []);
 
   return (
@@ -169,11 +169,13 @@ export default function HomePage() {
         <div className="mx-auto w-full max-w-md">
           <div className="relative overflow-hidden rounded-2xl border border-white/25 bg-white/10 backdrop-blur-xl">
             <div className="px-4 py-2 text-xs text-white/90">
-              <div className="flex w-max fly-marquee whitespace-nowrap">
-                <span className="inline-block">{winnersText}</span>
-                <span className="inline-block ml-12">{winnersText}</span>
-              </div>
-            </div>
+               <div className="fly-marquee">
+    <span className="inline-block">{winnersText}</span>
+    <span className="inline-block pe-12" aria-hidden="true">
+      {winnersText}
+    </span>
+  </div>
+</div>
             <div className="pointer-events-none absolute inset-y-0 left-0 w-10 bg-gradient-to-r from-purple-700/60 to-transparent" />
             <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-yellow-400/40 to-transparent" />
           </div>
@@ -381,36 +383,7 @@ export default function HomePage() {
       </div>
 
       {/* Animations */}
-      <style jsx global>{`
-        /* legacy (if anything still uses .marquee somewhere else) */
-        .marquee {
-          display: inline-block;
-          will-change: transform;
-          animation: marquee 22s linear infinite;
-        }
-        @keyframes marquee {
-          0% {
-            transform: translateX(0);
-          }
-          100% {
-            transform: translateX(-50%);
-          }
-        }
 
-        /* winners strip: infinite loop (two copies) */
-        .fly-marquee {
-          will-change: transform;
-          animation: flymarquee 18s linear infinite;
-        }
-        @keyframes flymarquee {
-          0% {
-            transform: translateX(0);
-          }
-          100% {
-            transform: translateX(-50%);
-          }
-        }
-      `}</style>
     </div>
   );
 }

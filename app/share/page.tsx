@@ -37,12 +37,24 @@ export default function SharePage() {
   }, [origin, refCode]);
 
   // ✅ 템پلیت ثابت
-  const messageTemplate = useMemo(() => {
-    return `🎁 فرصة ربح 100 ريال
-✈️ خصم على تذاكر السفر
+const messageTemplate = useMemo(() => {
+  return `🎁 خصم تذاكر سفر / هدايا
 
-{LINK}`;
-  }, []);
+{LINK}
+
+✈️ طيران قشم إير
+
+مسقط ⇄ طهران
+
+🎯 25 فبراير : 40﷼  
+🎯 30 فبراير : 30﷼
+
+🥏 للحجز والاستفسار عبر الواتساب:
+https://wa.me/96872680912
+
+🌐 الحجز أونلاين:
+Flyalrafah.com`;
+}, []);
 
   const shareText = useMemo(() => {
     return messageTemplate.replace("{LINK}", referralLink);
@@ -167,7 +179,7 @@ export default function SharePage() {
           </div>
 
           <h1 className="text-2xl font-bold text-center text-zinc-900">تم إنشاء رابطك الخاص</h1>
-          <p className="text-center text-zinc-500 mt-2 mb-5">أرسل الرابط إلى 3 أصدقاء</p>
+          <p className="text-center text-zinc-500 mt-2 mb-5">أرسل الرابط إلى 5 أصدقاء</p>
 
           {/* Message preview (keep for WhatsApp share only) */}
           <div className="rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 mb-5">
