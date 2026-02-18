@@ -135,9 +135,9 @@ export default function HomePage() {
 
   const winnersText = useMemo(() => {
     const items = [
-            "الفائزون هذا الشهر: محمود — تذكرة مجانية مسقط ⇄ شيراز 🎉",
-            "الفائزون هذا الشهر: محمود — تذكرة مجانية مسقط ⇄ شيراز 🎉",
-            "الفائزون هذا الشهر: محمود — تذكرة مجانية مسقط ⇄ شيراز 🎉",
+      "الفائزون هذا الشهر: محمود — تذكرة مجانية مسقط ⇄ شيراز 🎉",
+      "الفائزون هذا الشهر: سالم — خصم 10 ريال ✨",
+      "الفائزون هذا الشهر: نورة — قسيمة 50 ريال 🎁",
     ];
     return items.join("   •   ");
   }, []);
@@ -147,6 +147,31 @@ export default function HomePage() {
       {/* Background */}
       <div className="absolute inset-0 bg-gradient-to-br from-purple-700 via-purple-500 to-yellow-400" />
       <div className="absolute inset-0 opacity-20 blur-3xl bg-[radial-gradient(circle_at_20%_30%,rgba(255,255,255,0.35),transparent_45%),radial-gradient(circle_at_80%_60%,rgba(255,255,255,0.20),transparent_50%)]" />
+
+      {/* ✅ Background Decorations (Figma-style shapes) */}
+      <div className="pointer-events-none absolute inset-0">
+        {/* soft circles */}
+        <div className="absolute left-[-80px] top-[120px] h-[220px] w-[220px] rounded-full bg-white/10 blur-[1px]" />
+        <div className="absolute right-[-90px] top-[220px] h-[260px] w-[260px] rounded-full bg-white/8 blur-[1px]" />
+        <div className="absolute left-[40px] top-[420px] h-[140px] w-[140px] rounded-full bg-white/8 blur-[0.5px]" />
+        <div className="absolute right-[70px] top-[520px] h-[120px] w-[120px] rounded-full bg-white/7 blur-[0.5px]" />
+
+        {/* floating pills */}
+        <div className="absolute left-[55px] top-[180px] h-[18px] w-[70px] rounded-full bg-white/10" />
+        <div className="absolute left-[120px] top-[250px] h-[16px] w-[52px] rounded-full bg-white/8" />
+        <div className="absolute right-[120px] top-[170px] h-[18px] w-[74px] rounded-full bg-white/10" />
+        <div className="absolute right-[60px] top-[310px] h-[16px] w-[56px] rounded-full bg-white/8" />
+
+        {/* sparkles */}
+        <div className="absolute left-[120px] top-[95px] text-white/25 text-2xl">✦</div>
+        <div className="absolute right-[95px] top-[120px] text-white/20 text-xl">✦</div>
+        <div className="absolute right-[140px] top-[420px] text-white/20 text-2xl">✦</div>
+        <div className="absolute left-[70px] top-[560px] text-white/15 text-xl">✦</div>
+
+        {/* subtle glow blobs */}
+        <div className="absolute left-[-120px] bottom-[-120px] h-[320px] w-[320px] rounded-full bg-yellow-300/10 blur-3xl" />
+        <div className="absolute right-[-140px] bottom-[-140px] h-[360px] w-[360px] rounded-full bg-purple-300/12 blur-3xl" />
+      </div>
 
       <div className="relative z-10 min-h-screen flex flex-col px-6 pb-28">
         {/* Logo */}
@@ -169,15 +194,15 @@ export default function HomePage() {
         <div className="mx-auto w-full max-w-md">
           <div className="relative overflow-hidden rounded-2xl border border-white/25 bg-white/10 backdrop-blur-xl">
             <div className="px-4 py-2 text-xs text-white/90">
-<div className="fly-marquee">
-  <div className="flex shrink-0">
-    <span className="pe-12">{winnersText}</span>
-  </div>
+              <div className="fly-marquee">
+                <div className="flex shrink-0">
+                  <span className="pe-12">{winnersText}</span>
+                </div>
 
-  <div className="flex shrink-0">
-    <span className="pe-12">{winnersText}</span>
-  </div>
-</div>
+                <div className="flex shrink-0">
+                  <span className="pe-12">{winnersText}</span>
+                </div>
+              </div>
             </div>
             <div className="pointer-events-none absolute inset-y-0 left-0 w-10 bg-gradient-to-r from-purple-700/60 to-transparent" />
             <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-yellow-400/40 to-transparent" />
@@ -318,7 +343,10 @@ export default function HomePage() {
 
                   <div className="mt-4 rounded-2xl bg-white/12 border border-white/20 px-4 py-4 relative z-10">
                     <div className="text-xs text-white/80">رقمك</div>
-                    <div className="mt-1 text-sm text-white/95 font-semibold" dir="ltr">
+                    <div
+                      className="mt-1 text-sm text-white/95 font-semibold"
+                      dir="ltr"
+                    >
                       {phone || "—"}
                     </div>
 
