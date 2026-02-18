@@ -171,48 +171,35 @@ return items.join("   •   ");
             <div className="px-4 py-2 text-xs text-white/90">
                <div className="fly-marquee">
     <span className="inline-block">{winnersText}</span>
-    <span className="inline-block pe-12" aria-hidden="true">
+    <span className="inline-block ms-12" aria-hidden="true">
       {winnersText}
     </span>
   </div>
 </div>
-            <div className="pointer-events-none absolute inset-y-0 left-0 w-10 bg-gradient-to-r from-purple-700/60 to-transparent" />
-            <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-yellow-400/40 to-transparent" />
-          </div>
-        </div>
+  <div className="rounded-3xl px-6 py-5 bg-gradient-to-r from-orange-500 to-amber-400 text-white shadow-[0_18px_50px_rgba(0,0,0,0.25)] border border-white/15">
+  <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/20">
+    💳
+  </div>
 
-        {/* Hero */}
-        <div className="flex-1 flex flex-col items-center justify-start text-center pt-6">
-          <h1 className="text-[40px] sm:text-5xl font-extrabold text-white leading-[1.2] tracking-tight">
-            احصل على خصم فوري على تذكرة سفرك 🎉
-          </h1>
-          <p className="mt-3 text-lg sm:text-xl text-white/90 leading-relaxed">
-            شارك الرابط وجمّع نقاطك للدخول في السحب
-          </p>
+  <div className="font-extrabold text-xl">
+    جمّع نقاطك وخذ خصمك
+  </div>
 
-          {/* Cards */}
-          <div className="w-full max-w-md mt-8 space-y-4">
-            {/* Card 1 */}
-            <div className="rounded-3xl px-6 py-5 bg-gradient-to-r from-orange-500 to-amber-400 text-white shadow-[0_18px_50px_rgba(0,0,0,0.25)] border border-white/15">
-              <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/20">
-                💳
-              </div>
-              <div className="font-extrabold text-xl">جمّع نقاطك وخذ خصمك</div>
-              <div className="mt-1 text-white/90 text-sm leading-relaxed">
-                شارك الرابط وسجّل أصدقائك — وكلما زادت نقاطك زادت فرصتك
-              </div>
+  <div className="mt-1 text-white/90 text-sm leading-relaxed">
+    شارك الرابط وسجّل أصدقائك — وكلما زادت نقاطك زادت فرصتك
+  </div>
 
-              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                <div className="rounded-2xl bg-white/15 border border-white/15 px-4 py-3">
-                  <div className="text-white/90 font-bold">خصم فوري</div>
-                  <div className="text-white/85 mt-1">بعد أول تسجيل ✅</div>
-                </div>
-                <div className="rounded-2xl bg-white/15 border border-white/15 px-4 py-3">
-                  <div className="text-white/90 font-bold">وفر أكثر</div>
-                  <div className="text-white/85 mt-1">عند 3 تسجيلات ⭐</div>
-                </div>
-              </div>
-            </div>
+  <div className="mt-4 text-sm">
+    <div className="rounded-2xl bg-white/15 border border-white/15 px-4 py-4 text-center">
+      <div className="text-white font-extrabold text-base">
+        شارك مع 10 من أصدقائك 🚀
+      </div>
+      <div className="text-white/85 mt-1">
+        واحصل على أقوى خصم عند اكتمال 10 تسجيلات ⭐
+      </div>
+    </div>
+  </div>
+</div>
 
             {/* Card 2 */}
             <div className="rounded-3xl px-6 py-5 bg-white/10 backdrop-blur-xl border border-white/25 text-white shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
@@ -220,7 +207,7 @@ return items.join("   •   ");
                 ✨
               </div>
               <div className="font-extrabold text-xl">
-                سحب على 100 ريال أو تذكرة مجانية
+                سحب على 500 ريال أو تذكرة مجانية
               </div>
               <div className="mt-1 text-white/85">ادخل السحب تلقائياً</div>
             </div>

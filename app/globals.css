@@ -13,13 +13,13 @@ html {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ✅ Winners Marquee (Infinite Loop) */
+/* ✅ Winners Marquee (True Infinite Loop) */
 @keyframes flyMarquee {
   0% {
     transform: translate3d(0, 0, 0);
   }
   100% {
-    transform: translate3d(-50%, 0, 0);
+    transform: translate3d(-100%, 0, 0);
   }
 }
 
