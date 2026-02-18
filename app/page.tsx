@@ -169,12 +169,15 @@ export default function HomePage() {
         <div className="mx-auto w-full max-w-md">
           <div className="relative overflow-hidden rounded-2xl border border-white/25 bg-white/10 backdrop-blur-xl">
             <div className="px-4 py-2 text-xs text-white/90">
-              <div className="fly-marquee">
-                <span className="inline-block">{winnersText}</span>
-                <span className="inline-block ms-12" aria-hidden="true">
-                  {winnersText}
-                </span>
-              </div>
+<div className="fly-marquee">
+  <div className="flex shrink-0">
+    <span className="pe-12">{winnersText}</span>
+  </div>
+
+  <div className="flex shrink-0">
+    <span className="pe-12">{winnersText}</span>
+  </div>
+</div>
             </div>
             <div className="pointer-events-none absolute inset-y-0 left-0 w-10 bg-gradient-to-r from-purple-700/60 to-transparent" />
             <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-yellow-400/40 to-transparent" />
