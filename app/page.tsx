@@ -281,7 +281,7 @@ export default function HomePage() {
                     <input
                       value={lookupPhone}
                       onChange={(e) => setLookupPhone(e.target.value)}
-                      placeholder="+968XXXXXXXX"
+                      placeholder="أدخل رقم واتسابك"
                       dir="ltr"
                       inputMode="tel"
                       className="flex-1 rounded-2xl px-4 py-3 bg-white/12 border border-white/20 text-white placeholder:text-white/60 outline-none focus:ring-2 focus:ring-white/30"
