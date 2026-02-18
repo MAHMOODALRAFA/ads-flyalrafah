@@ -15,7 +15,12 @@ type ShareResponse =
       addedPoints?: number;
       reason?: "cooldown";
       waitMinutes?: number;
-      user?: { phone: string; refCode: string; points: number; lastShareAt?: string | null };
+      user?: {
+        phone: string;
+        refCode: string;
+        points: number;
+        lastShareAt?: string | null;
+      };
     }
   | { ok: false; error: string };
 
@@ -31,14 +36,12 @@ export default function SharePage() {
     return window.location.origin;
   }, []);
 
-  // ✅ Link: نفس الدومين (local/dev/production)
   const referralLink = useMemo(() => {
     return `${origin}/r/${refCode || "XXXX"}`;
   }, [origin, refCode]);
 
-  // ✅ 템پلیت ثابت
-const messageTemplate = useMemo(() => {
-  return `🎁 خصم تذاكر سفر / هدايا
+  const messageTemplate = useMemo(() => {
+    return `🎁 خصم تذاكر سفر / هدايا
 
 {LINK}
 
@@ -54,7 +57,7 @@ https://wa.me/96872680912
 
 🌐 الحجز أونلاين:
 Flyalrafah.com`;
-}, []);
+  }, []);
 
   const shareText = useMemo(() => {
     return messageTemplate.replace("{LINK}", referralLink);
@@ -118,27 +121,27 @@ Flyalrafah.com`;
 
       const data = (await res.json().catch(() => null)) as ShareResponse | null;
 
-      if (!res.ok || !data) {
+      if (!res.ok || !data || !data.ok) {
         alert("حصل خطأ أثناء تسجيل المشاركة، حاول مرة أخرى");
         return;
       }
 
-      if (!data.ok) {
-        alert("حصل خطأ أثناء تسجيل المشاركة، حاول مرة أخرى");
-        return;
-      }
-
-      // ✅ cooldown
+      // ✅ cooldown from API (optional note)
       if (data.credited === false && data.reason === "cooldown") {
         const m = data.waitMinutes ?? 1;
         alert(`تم تسجيل المشاركة ✅ لكن انتظر ${m} دقيقة قبل إضافة نقطة جديدة`);
       }
 
-      // ✅ 2) open WhatsApp
+      // ✅ 2) set 60s verification cooldown for UI flow
+      // (هذا هو “إرسال لـ 10 أشخاص”)
+      sessionStorage.setItem("wa_pending_share", "1");
+      sessionStorage.setItem("wa_cooldown_until", String(Date.now() + 60_000));
+
+      // ✅ 3) open WhatsApp
       const url = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
       window.open(url, "_blank");
 
-      // ✅ 3) go progress
+      // ✅ 4) go progress
       router.push("/share-progress");
     } catch {
       alert("تعذر الاتصال بالخادم، حاول مرة أخرى");
@@ -149,7 +152,10 @@ Flyalrafah.com`;
 
   if (loading) {
     return (
-      <main dir="rtl" className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
+      <main
+        dir="rtl"
+        className="min-h-screen bg-zinc-50 flex items-center justify-center p-6"
+      >
         <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-6 text-center">
           <div className="text-lg font-bold text-zinc-900">جارٍ التحميل...</div>
           <div className="text-sm text-zinc-500 mt-2">نجهّز رابطك الخاص</div>
@@ -159,7 +165,10 @@ Flyalrafah.com`;
   }
 
   return (
-    <main dir="rtl" className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
+    <main
+      dir="rtl"
+      className="min-h-screen bg-zinc-50 flex items-center justify-center p-6"
+    >
       <div className="w-full max-w-md">
         {/* Step indicator */}
         <div className="flex justify-center mb-4">
@@ -178,22 +187,28 @@ Flyalrafah.com`;
             </div>
           </div>
 
-          <h1 className="text-2xl font-bold text-center text-zinc-900">تم إنشاء رابطك الخاص</h1>
-          <p className="text-center text-zinc-500 mt-2 mb-5">أرسل الرابط إلى 5 أصدقاء</p>
+          <h1 className="text-2xl font-bold text-center text-zinc-900">
+            تم إنشاء رابطك الخاص
+          </h1>
+          <p className="text-center text-zinc-500 mt-2 mb-5">
+            أرسل الرابط إلى 10 أصدقاء
+          </p>
 
-          {/* Message preview (keep for WhatsApp share only) */}
+          {/* Message preview */}
           <div className="rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 mb-5">
             <div className="text-xs text-zinc-500 mb-2">معاينة الرسالة:</div>
-            <pre className="whitespace-pre-wrap text-sm text-zinc-800 leading-relaxed">{shareText}</pre>
+            <pre className="whitespace-pre-wrap text-sm text-zinc-800 leading-relaxed">
+              {shareText}
+            </pre>
           </div>
 
-          {/* Buttons */}
           <button
             onClick={shareToWhatsApp}
             disabled={submitting}
             className="w-full rounded-2xl py-4 bg-green-500 text-white font-bold shadow-md hover:bg-green-600 transition flex items-center justify-center gap-2 disabled:opacity-60"
           >
-            {submitting ? "جارٍ تسجيل المشاركة..." : "مشاركة عبر واتساب"} <span>🔗</span>
+            {submitting ? "جارٍ تسجيل المشاركة..." : "مشاركة عبر واتساب"}{" "}
+            <span>🔗</span>
           </button>
 
           <button

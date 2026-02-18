@@ -34,23 +34,21 @@ export default function ShareProgressPage() {
 
   const [loading, setLoading] = useState(true);
 
-  // ✅ معیار واقعی پیشرفت: تعداد Share های ثبت‌شده
   const [sharesCount, setSharesCount] = useState<number>(0);
-
-  // فقط برای نمایش/شفافیت (به Unlock ربطی ندارد)
   const [points, setPoints] = useState<number>(0);
   const [joins, setJoins] = useState<number>(0);
 
-  // اگر Share cooldown داشتی، اینجا نمایش می‌دیم
   const [cooldownMinutes, setCooldownMinutes] = useState<number>(0);
   const [isBlocked, setIsBlocked] = useState<boolean>(false);
 
-  // ✅ حالت بررسی بعد از برگشت از واتس‌اپ
+  // ✅ 60s UI cooldown after WhatsApp click
+  const [uiCooldownLeftSec, setUiCooldownLeftSec] = useState<number>(0);
+  const uiCooldownActive = uiCooldownLeftSec > 0;
+
   const [checking, setChecking] = useState(false);
   const checkingRef = useRef(false);
   const phoneRef = useRef<string>("");
 
-  // ---------- helper: fetch + set state ----------
   async function fetchCheck(phone: string) {
     const res = await fetch("/api/check", {
       method: "POST",
@@ -67,9 +65,6 @@ export default function ShareProgressPage() {
 
     const p = Number(data.user.points || 0);
     const j = Number(data.user.joins || 0);
-
-    // ✅ چون: Share=1 point و Join=10 points
-    // shares = points - joins*10
     const computedShares = Math.max(0, p - j * 10);
 
     setPoints(p);
@@ -84,9 +79,11 @@ export default function ShareProgressPage() {
       setIsBlocked(false);
       setCooldownMinutes(0);
     }
+
+    return computedShares;
   }
 
-  // ✅ Load from DB via /api/check (اولین بار)
+  // ✅ initial load
   useEffect(() => {
     const phone = getPhone();
     if (!phone) {
@@ -115,7 +112,33 @@ export default function ShareProgressPage() {
     };
   }, [router]);
 
-  // ✅ auto unlock after REQUIRED_SHARES
+  // ✅ UI cooldown timer reader
+  useEffect(() => {
+    const untilRaw = sessionStorage.getItem("wa_cooldown_until");
+    const until = Number(untilRaw || "0");
+    if (!until) return;
+
+    const tick = () => {
+      const leftMs = until - Date.now();
+      const leftSec = Math.max(0, Math.ceil(leftMs / 1000));
+      setUiCooldownLeftSec(leftSec);
+
+      if (leftSec <= 0) {
+        sessionStorage.removeItem("wa_cooldown_until");
+        sessionStorage.removeItem("wa_pending_share");
+
+        // ✅ go to unlocked in “review” mode
+        sessionStorage.setItem("review_mode", "1");
+        router.replace("/unlocked");
+      }
+    };
+
+    tick();
+    const t = setInterval(tick, 250);
+    return () => clearInterval(t);
+  }, [router]);
+
+  // ✅ auto unlock after REQUIRED_SHARES (normal logic)
   useEffect(() => {
     if (!loading && sharesCount >= REQUIRED_SHARES) {
       const t = setTimeout(() => router.push("/unlocked"), 700);
@@ -123,7 +146,7 @@ export default function ShareProgressPage() {
     }
   }, [sharesCount, loading, router]);
 
-  // ✅ وقتی برگشت از واتس‌اپ (tab فعال شد) شروع به بررسی کنیم
+  // ✅ when return from WhatsApp focus, start auto-check (kept)
   useEffect(() => {
     function onVisibility() {
       if (document.visibilityState === "visible") {
@@ -142,7 +165,6 @@ export default function ShareProgressPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ تابع بررسی 60 ثانیه‌ای
   async function startAutoCheck() {
     const phone = phoneRef.current;
     if (!phone) return;
@@ -154,30 +176,23 @@ export default function ShareProgressPage() {
     const timeoutMs = 60_000;
     const intervalMs = 3_000;
 
-    // همون لحظه یک بار چک
     try {
       await fetchCheck(phone);
-    } catch {
-      // اگر خطا شد باز هم ادامه می‌دهیم تا تایم‌اوت
-    }
+    } catch {}
 
     const timer = setInterval(async () => {
       const elapsed = Date.now() - startedAt;
 
       try {
-        await fetchCheck(phone);
-
-        // اگر به حد لازم رسید، auto unlock useEffect انجام می‌دهد
-        if (sharesCount >= REQUIRED_SHARES) {
+        const computedShares = await fetchCheck(phone);
+        if (computedShares >= REQUIRED_SHARES) {
           clearInterval(timer);
           checkingRef.current = false;
           setChecking(false);
           sessionStorage.removeItem("wa_pending_share");
           return;
         }
-      } catch {
-        // ادامه بده
-      }
+      } catch {}
 
       if (elapsed >= timeoutMs) {
         clearInterval(timer);
@@ -188,23 +203,47 @@ export default function ShareProgressPage() {
     }, intervalMs);
   }
 
+  // ✅ progress bar: shares normally, timer when cooldown active
   const progressPercent = useMemo(() => {
+    if (uiCooldownActive) {
+      const done = 60 - clamp(uiCooldownLeftSec, 0, 60);
+      const v = (done / 60) * 100;
+      return Math.round(v);
+    }
     const v = (clamp(sharesCount, 0, REQUIRED_SHARES) / REQUIRED_SHARES) * 100;
     return Math.round(v);
-  }, [sharesCount]);
+  }, [sharesCount, uiCooldownActive, uiCooldownLeftSec]);
+
+  const progressRightText = useMemo(() => {
+    if (uiCooldownActive) {
+      const mm = String(Math.floor(uiCooldownLeftSec / 60)).padStart(1, "0");
+      const ss = String(uiCooldownLeftSec % 60).padStart(2, "0");
+      return `${mm}:${ss}`;
+    }
+    return `${clamp(sharesCount, 0, REQUIRED_SHARES)} / ${REQUIRED_SHARES}`;
+  }, [sharesCount, uiCooldownActive, uiCooldownLeftSec]);
+
+  const progressLeftText = useMemo(() => {
+    if (uiCooldownActive) return "جارٍ الإرسال إلى 10 أشخاص...";
+    return `${progressPercent}%`;
+  }, [uiCooldownActive, progressPercent]);
 
   const remaining = useMemo(() => {
     return Math.max(0, REQUIRED_SHARES - clamp(sharesCount, 0, REQUIRED_SHARES));
   }, [sharesCount]);
 
   const statusTitle = useMemo(() => {
+    if (uiCooldownActive) return "جارٍ التحقق من المشاركة... ⏳";
     if (checking) return "جارٍ التحقق... ⏳";
     if (sharesCount <= 0) return "ابدأ بالمشاركة الآن";
     if (sharesCount >= REQUIRED_SHARES) return "تم تفعيل الدخول للسحب ✅";
     return "✅ تم تسجيل مشاركة";
-  }, [sharesCount, checking]);
+  }, [sharesCount, checking, uiCooldownActive]);
 
   const statusText = useMemo(() => {
+    if (uiCooldownActive) {
+      return "انتظر دقيقة واحدة — سيتم نقلك تلقائياً للمرحلة التالية.";
+    }
     if (sharesCount >= REQUIRED_SHARES) {
       return "ممتاز! سيتم نقلك الآن للمرحلة الأخيرة...";
     }
@@ -212,7 +251,7 @@ export default function ShareProgressPage() {
       return "انتظر لحظات... نراجع مشاركتك (قد يستغرق حتى دقيقة واحدة)";
     }
     return `شارك الرابط ${remaining} مرات أخرى للدخول في السحب الشهري`;
-  }, [sharesCount, remaining, checking]);
+  }, [sharesCount, remaining, checking, uiCooldownActive]);
 
   if (loading) {
     return (
@@ -249,15 +288,11 @@ export default function ShareProgressPage() {
             تقدّم المشاركة
           </h1>
 
-          {/* Progress header */}
           <div className="flex items-center justify-between text-sm text-zinc-500 mb-2">
-            <span>{progressPercent}%</span>
-            <span>
-              {clamp(sharesCount, 0, REQUIRED_SHARES)} / {REQUIRED_SHARES}
-            </span>
+            <span>{progressLeftText}</span>
+            <span>{progressRightText}</span>
           </div>
 
-          {/* Progress bar */}
           <div className="h-3 w-full rounded-full bg-zinc-100 overflow-hidden mb-6">
             <div
               className="h-full rounded-full bg-gradient-to-r from-purple-600 to-orange-400 transition-all"
@@ -265,14 +300,12 @@ export default function ShareProgressPage() {
             />
           </div>
 
-          {/* Center icon */}
           <div className="flex justify-center mb-4">
             <div className="h-20 w-20 rounded-full bg-gradient-to-br from-purple-600 to-orange-400 flex items-center justify-center shadow-lg">
               <span className="text-3xl text-white">🔗</span>
             </div>
           </div>
 
-          {/* Status box */}
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-center">
             <div className="text-lg font-semibold text-zinc-900">{statusTitle}</div>
             <div className="text-sm text-zinc-700 mt-1">{statusText}</div>
@@ -284,7 +317,6 @@ export default function ShareProgressPage() {
             ) : null}
           </div>
 
-          {/* Rules box */}
           <div className="mt-4 rounded-2xl border border-purple-200 bg-purple-50 px-4 py-4">
             <div className="font-bold text-zinc-900 mb-2">📌 قواعد النقاط</div>
             <ul className="text-sm text-zinc-800 space-y-2">
@@ -294,18 +326,19 @@ export default function ShareProgressPage() {
             </ul>
           </div>
 
-          {/* Actions */}
           <button
             onClick={() => {
-              // یک کلیک → برو واتس‌اپ (صفحه /share)
-              // و وقتی برگشت، auto-check شروع میشه
               sessionStorage.setItem("wa_pending_share", "1");
               router.push("/share");
             }}
-            disabled={checking}
+            disabled={checking || uiCooldownActive}
             className="w-full mt-5 rounded-2xl py-4 bg-green-500 text-white font-bold shadow-md hover:bg-green-600 transition disabled:opacity-60 disabled:hover:bg-green-500"
           >
-            {checking ? "جارٍ التحقق..." : "مشاركة الرابط عبر واتساب"}
+            {uiCooldownActive
+              ? "انتظر... جارٍ الإرسال ⏳"
+              : checking
+              ? "جارٍ التحقق..."
+              : "مشاركة الرابط عبر واتساب"}
           </button>
 
           <div className="grid grid-cols-2 gap-3 mt-3">
@@ -317,18 +350,14 @@ export default function ShareProgressPage() {
             </button>
 
             <button
-              onClick={() => {
-                // دستی هم اگر خواست، یک بار چک کن
-                startAutoCheck();
-              }}
-              disabled={checking}
+              onClick={() => startAutoCheck()}
+              disabled={checking || uiCooldownActive}
               className="rounded-2xl py-4 bg-zinc-100 text-zinc-700 font-bold hover:bg-zinc-200 transition disabled:opacity-60"
             >
-              {checking ? "..." : "تحديث الصفحة"}
+              {checking || uiCooldownActive ? "..." : "تحديث الصفحة"}
             </button>
           </div>
 
-          {/* Tiny debug (اختیاری) */}
           <p className="text-center text-xs text-zinc-400 mt-4">
             (للتجربة) النقاط: {points} — الأصدقاء المنضمّون: {joins} — المشاركات المحسوبة:{" "}
             {sharesCount}
