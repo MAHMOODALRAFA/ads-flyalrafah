@@ -4,7 +4,14 @@
 const REF_CODE_KEY = "flyalrafah_ref_code";
 const SHARE_COUNT_KEY = "flyalrafah_share_count";
 const PHONE_KEY = "flyalrafah_phone";
+
+// ✅ (kept for backward-compat only; not used in UI anymore)
 const DISCOUNT_KEY = "flyalrafah_discount_code";
+
+// ✅ questions gate (new)
+const QUESTIONS_DONE_KEY = "flyalrafah_questions_done";
+const QUESTIONS_DONE_AT_KEY = "flyalrafah_questions_done_at";
+const QUESTIONS_ANSWERS_KEY = "flyalrafah_questions_answers";
 
 // session
 const STARTED_AT_KEY = "flyalrafah_started_at";
@@ -157,6 +164,57 @@ export function hasStarted(): boolean {
   return true;
 }
 
+/** -------------------- questions gate (local) -------------------- */
+
+export function hasAnsweredQuestions(): boolean {
+  if (typeof window === "undefined") return false;
+  if (!hasStarted()) return false;
+
+  const v = readSigned(QUESTIONS_DONE_KEY, "0");
+  if (v === "__TAMPERED__") {
+    removeSigned(QUESTIONS_DONE_KEY);
+    removeSigned(QUESTIONS_DONE_AT_KEY);
+    removeSigned(QUESTIONS_ANSWERS_KEY);
+    return false;
+  }
+  return v === "1";
+}
+
+export function markQuestionsAnswered(answers?: Record<string, unknown>) {
+  if (typeof window === "undefined") return;
+
+  writeSigned(QUESTIONS_DONE_KEY, "1");
+  writeSigned(QUESTIONS_DONE_AT_KEY, String(Date.now()));
+
+  try {
+    if (answers) writeSigned(QUESTIONS_ANSWERS_KEY, JSON.stringify(answers));
+  } catch {
+    // ignore
+  }
+
+  touchSession();
+}
+
+export function getQuestionsAnswers(): Record<string, unknown> | null {
+  if (typeof window === "undefined") return null;
+
+  const raw = readSigned(QUESTIONS_ANSWERS_KEY, "");
+  if (!raw || raw === "__TAMPERED__") return null;
+
+  try {
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === "object" ? (obj as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function resetQuestions() {
+  removeSigned(QUESTIONS_DONE_KEY);
+  removeSigned(QUESTIONS_DONE_AT_KEY);
+  removeSigned(QUESTIONS_ANSWERS_KEY);
+}
+
 /** -------------------- ref code -------------------- */
 
 export function getRefCode(): string {
@@ -231,7 +289,7 @@ export function isUnlocked(): boolean {
   return getShareCount() >= REQUIRED_SHARES;
 }
 
-/** -------------------- discount -------------------- */
+/** -------------------- (legacy) discount: kept for backward compat only -------------------- */
 
 export function makeCoupon(code: string) {
   const safe = (code || "XXXX").toUpperCase().slice(0, 6);
@@ -274,7 +332,8 @@ export function verifyReferralOrReset(): {
   refCode: string;
   shareCount: number;
 } {
-  if (typeof window === "undefined") return { tampered: false, refCode: "", shareCount: 0 };
+  if (typeof window === "undefined")
+    return { tampered: false, refCode: "", shareCount: 0 };
 
   const rc = readSigned(REF_CODE_KEY, "");
   const sc = readSigned(SHARE_COUNT_KEY, "0");
@@ -285,6 +344,7 @@ export function verifyReferralOrReset(): {
     resetRefCode();
     resetShareCount();
     resetDiscountCode();
+    resetQuestions();
     removeSigned(LAST_SHARE_TS_KEY);
   }
 
@@ -299,8 +359,17 @@ export function resetAll() {
 
   removeSigned(REF_CODE_KEY);
   removeSigned(SHARE_COUNT_KEY);
+
+  // legacy
   removeSigned(DISCOUNT_KEY);
+
+  // share
   removeSigned(LAST_SHARE_TS_KEY);
+
+  // questions
+  removeSigned(QUESTIONS_DONE_KEY);
+  removeSigned(QUESTIONS_DONE_AT_KEY);
+  removeSigned(QUESTIONS_ANSWERS_KEY);
 
   // optional:
   // localStorage.removeItem(DEVICE_ID_KEY);

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getPhone } from "../lib/referral";
+import { getPhone, REQUIRED_SHARES } from "../lib/referral";
 
 type MeResponse =
   | { ok: true; user: { phone: string; refCode: string; points: number } }
@@ -41,22 +41,21 @@ export default function SharePage() {
   }, [origin, refCode]);
 
   const messageTemplate = useMemo(() => {
-    return `🎁 خصم تذاكر سفر / هدايا
-
+    return `🎁 فرصة قرعة شهرية من FlyAlrafah
 {LINK}
 
-✈️ طيران قشم إير
-
-مسقط ⇄ طهران
-
-🎯 25 فبراير : 40﷼  
-🎯 30 فبراير : 30﷼
-
-🥏 للحجز والاستفسار عبر الواتساب:
+✅ شارك الرابط مع ${REQUIRED_SHARES} من أصدقائك عبر واتساب
+⭐ كل مشاركة = نقاط أكثر + فرصة أكبر للفوز
+🔹 مسقط – شيراز
+🔹 مسقط – الأهواز
+🔹 مسقط – شابهار
+🔹 مسقط – مشهد
+🔹 مسقط – طهران
+💰 ابتداءً من 29 ريال
+📲 للحجز والاستفسار عبر الواتساب:
 https://wa.me/96872680912
 
-🌐 الحجز أونلاين:
-Flyalrafah.com`;
+🌐 Flyalrafah.com`;
   }, []);
 
   const shareText = useMemo(() => {
@@ -132,8 +131,7 @@ Flyalrafah.com`;
         alert(`تم تسجيل المشاركة ✅ لكن انتظر ${m} دقيقة قبل إضافة نقطة جديدة`);
       }
 
-      // ✅ 2) set 60s verification cooldown for UI flow
-      // (هذا هو “إرسال لـ 10 أشخاص”)
+      // ✅ 2) set verification cooldown for UI flow (demo)
       sessionStorage.setItem("wa_pending_share", "1");
       sessionStorage.setItem("wa_cooldown_until", String(Date.now() + 60_000));
 
@@ -175,7 +173,7 @@ Flyalrafah.com`;
           <div className="text-sm text-zinc-500">
             <span className="inline-block h-2 w-10 rounded-full bg-purple-600 align-middle ml-2" />
             <span className="inline-block h-2 w-10 rounded-full bg-purple-600/30 align-middle ml-2" />
-            خطوة 2 من 4
+            خطوة 3 من 4
           </div>
         </div>
 
@@ -191,7 +189,7 @@ Flyalrafah.com`;
             تم إنشاء رابطك الخاص
           </h1>
           <p className="text-center text-zinc-500 mt-2 mb-5">
-            أرسل الرابط إلى 10 أصدقاء
+            شارك الرابط مع {REQUIRED_SHARES} أصدقاء لزيادة نقاطك وفرصتك في القرعة 🎯
           </p>
 
           {/* Message preview */}

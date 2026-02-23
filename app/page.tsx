@@ -9,6 +9,7 @@ import {
   getShareCount,
   setPhone,
   resetAll,
+  hasAnsweredQuestions,
 } from "@/app/lib/referral";
 
 type MeResponse =
@@ -42,6 +43,8 @@ export default function HomePage() {
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState<string>("");
 
+  const [qaDone, setQaDone] = useState(false);
+
   useEffect(() => {
     const s = hasStarted();
     setStarted(s);
@@ -49,6 +52,9 @@ export default function HomePage() {
     if (s) {
       const p = getPhone();
       setPhoneState(p);
+
+      // questions state
+      setQaDone(hasAnsweredQuestions());
 
       // fallback local
       setPoints(getShareCount());
@@ -73,7 +79,7 @@ export default function HomePage() {
         setPoints(Number(data.user.points || 0));
       }
     } catch {
-      // fallback local باقی می‌ماند
+      // fallback local remains
     } finally {
       setPointsLoading(false);
     }
@@ -111,11 +117,12 @@ export default function HomePage() {
         return;
       }
 
-      // ✅ نجاح: حفظ الرقم وتفعيل حالة B
+      // ✅ success: save phone + update UI state
       setPhone(p);
       setStarted(true);
       setPhoneState(p);
       setPoints(Number(data.user.points || 0));
+      setQaDone(hasAnsweredQuestions()); // read from local for this device
     } catch {
       setLookupError("حدث خطأ، حاول مرة أخرى");
     } finally {
@@ -130,14 +137,35 @@ export default function HomePage() {
     setPoints(0);
     setLookupPhone("");
     setLookupError("");
+    setQaDone(false);
     router.refresh();
   }
 
+  function goPrimary() {
+    // main CTA based on questions completion
+    if (!started) {
+      router.push("/start");
+      return;
+    }
+    if (!qaDone) {
+      router.push("/questions");
+      return;
+    }
+    router.push("/share-progress");
+  }
+
+  function goShareNow() {
+    if (!started) return router.push("/start");
+    if (!qaDone) return router.push("/questions");
+    router.push("/share");
+  }
+
   const winnersText = useMemo(() => {
+    // ✅ no discount language — raffle/prizes only
     const items = [
       "الفائزون هذا الشهر: محمود — تذكرة مجانية مسقط ⇄ شيراز 🎉",
-      "الفائزون هذا الشهر: سالم — خصم 10 ريال ✨",
-      "الفائزون هذا الشهر: نورة — قسيمة 50 ريال 🎁",
+      "الفائزون هذا الشهر: سالم — قسيمة سفر 50 ريال ✨",
+      "الفائزون هذا الشهر: نورة — باقة هدايا سفر 🎁",
     ];
     return items.join("   •   ");
   }, []);
@@ -148,27 +176,23 @@ export default function HomePage() {
       <div className="absolute inset-0 bg-gradient-to-br from-purple-700 via-purple-500 to-yellow-400" />
       <div className="absolute inset-0 opacity-20 blur-3xl bg-[radial-gradient(circle_at_20%_30%,rgba(255,255,255,0.35),transparent_45%),radial-gradient(circle_at_80%_60%,rgba(255,255,255,0.20),transparent_50%)]" />
 
-      {/* ✅ Background Decorations (Figma-style shapes) */}
+      {/* Background Decorations */}
       <div className="pointer-events-none absolute inset-0">
-        {/* soft circles */}
         <div className="absolute left-[-80px] top-[120px] h-[220px] w-[220px] rounded-full bg-white/10 blur-[1px]" />
         <div className="absolute right-[-90px] top-[220px] h-[260px] w-[260px] rounded-full bg-white/8 blur-[1px]" />
         <div className="absolute left-[40px] top-[420px] h-[140px] w-[140px] rounded-full bg-white/8 blur-[0.5px]" />
         <div className="absolute right-[70px] top-[520px] h-[120px] w-[120px] rounded-full bg-white/7 blur-[0.5px]" />
 
-        {/* floating pills */}
         <div className="absolute left-[55px] top-[180px] h-[18px] w-[70px] rounded-full bg-white/10" />
         <div className="absolute left-[120px] top-[250px] h-[16px] w-[52px] rounded-full bg-white/8" />
         <div className="absolute right-[120px] top-[170px] h-[18px] w-[74px] rounded-full bg-white/10" />
         <div className="absolute right-[60px] top-[310px] h-[16px] w-[56px] rounded-full bg-white/8" />
 
-        {/* sparkles */}
         <div className="absolute left-[120px] top-[95px] text-white/25 text-2xl">✦</div>
         <div className="absolute right-[95px] top-[120px] text-white/20 text-xl">✦</div>
         <div className="absolute right-[140px] top-[420px] text-white/20 text-2xl">✦</div>
         <div className="absolute left-[70px] top-[560px] text-white/15 text-xl">✦</div>
 
-        {/* subtle glow blobs */}
         <div className="absolute left-[-120px] bottom-[-120px] h-[320px] w-[320px] rounded-full bg-yellow-300/10 blur-3xl" />
         <div className="absolute right-[-140px] bottom-[-140px] h-[360px] w-[360px] rounded-full bg-purple-300/12 blur-3xl" />
       </div>
@@ -198,7 +222,6 @@ export default function HomePage() {
                 <div className="flex shrink-0">
                   <span className="pe-12">{winnersText}</span>
                 </div>
-
                 <div className="flex shrink-0">
                   <span className="pe-12">{winnersText}</span>
                 </div>
@@ -212,10 +235,10 @@ export default function HomePage() {
         {/* Hero */}
         <div className="flex-1 flex flex-col items-center justify-start text-center pt-6">
           <h1 className="text-[40px] sm:text-5xl font-extrabold text-white leading-[1.2] tracking-tight">
-            احصل على خصم فوري على تذكرة سفرك 🎉
+            ادخل قرعة FlyAlrafah الشهرية 🎉
           </h1>
           <p className="mt-3 text-lg sm:text-xl text-white/90 leading-relaxed">
-            شارك الرابط وجمّع نقاطك للدخول في السحب
+            شارك الرابط • اجمع نقاط • زِد فرصتك للفوز 🏆
           </p>
 
           {/* Cards */}
@@ -223,21 +246,20 @@ export default function HomePage() {
             {/* Card 1 */}
             <div className="rounded-3xl px-6 py-5 bg-gradient-to-r from-orange-500 to-amber-400 text-white shadow-[0_18px_50px_rgba(0,0,0,0.25)] border border-white/15">
               <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/20">
-                💳
+                ⭐
               </div>
-              <div className="font-extrabold text-xl">جمّع نقاطك وخذ خصمك</div>
+              <div className="font-extrabold text-xl">جمّع نقاطك وزِد فرصتك</div>
               <div className="mt-1 text-white/90 text-sm leading-relaxed">
-                شارك الرابط وسجّل أصدقائك — وكلما زادت نقاطك زادت فرصتك
+                كل مشاركة تُضيف نقاط — وكل صديق يسجّل من رابطك يزيد فرصتك أكثر
               </div>
 
-              {/* ✅ single merged box */}
               <div className="mt-4 text-sm">
                 <div className="rounded-2xl bg-white/15 border border-white/15 px-4 py-4 text-center">
                   <div className="text-white font-extrabold text-base">
-                    شارك مع 10 من أصدقائك 🚀
+                    شارك مع {5} من أصدقائك 🚀
                   </div>
                   <div className="text-white/85 mt-1">
-                    واحصل على أقوى خصم عند اكتمال 10 تسجيلات ⭐
+                    بعدها يتم تفعيل دخولك للقرعة — واستمر للمزيد من النقاط ⭐
                   </div>
                 </div>
               </div>
@@ -246,15 +268,15 @@ export default function HomePage() {
             {/* Card 2 */}
             <div className="rounded-3xl px-6 py-5 bg-white/10 backdrop-blur-xl border border-white/25 text-white shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
               <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/15">
-                ✨
+                🏆
               </div>
-              <div className="font-extrabold text-xl">
-                سحب على 500 ريال أو تذكرة مجانية
+              <div className="font-extrabold text-xl">جوائز شهرية قوية</div>
+              <div className="mt-1 text-white/85">
+                كل شهر فائزين — تذاكر مجانية أو قسائم سفر ✨
               </div>
-              <div className="mt-1 text-white/85">ادخل السحب تلقائياً</div>
             </div>
 
-            {/* Card 3 FINAL */}
+            {/* Card 3: Lookup / Status */}
             <div className="rounded-3xl px-6 py-5 text-white shadow-[0_18px_50px_rgba(0,0,0,0.22)] border border-white/20 bg-gradient-to-br from-fuchsia-600/70 via-purple-600/55 to-amber-400/40 backdrop-blur-xl ring-1 ring-white/25 relative overflow-hidden text-right">
               <div className="pointer-events-none absolute -top-16 -left-16 h-40 w-40 rounded-full bg-white/15 blur-2xl" />
               <div className="pointer-events-none absolute -bottom-20 -right-20 h-48 w-48 rounded-full bg-black/10 blur-2xl" />
@@ -320,7 +342,9 @@ export default function HomePage() {
                       </div>
                       <div className="mt-2 font-extrabold text-xl">نقاطك الحالية</div>
                       <div className="mt-1 text-sm text-white/90">
-                        تابع نقاطك وواصل المشاركة لزيادة فرصتك
+                        {qaDone
+                          ? "واصل المشاركة لزيادة فرصتك"
+                          : "أكمل 3 أسئلة سريعة لتفعيل المشاركة"}
                       </div>
                     </div>
 
@@ -343,10 +367,7 @@ export default function HomePage() {
 
                   <div className="mt-4 rounded-2xl bg-white/12 border border-white/20 px-4 py-4 relative z-10">
                     <div className="text-xs text-white/80">رقمك</div>
-                    <div
-                      className="mt-1 text-sm text-white/95 font-semibold"
-                      dir="ltr"
-                    >
+                    <div className="mt-1 text-sm text-white/95 font-semibold" dir="ltr">
                       {phone || "—"}
                     </div>
 
@@ -366,10 +387,10 @@ export default function HomePage() {
                       </button>
 
                       <button
-                        onClick={() => router.push("/share")}
+                        onClick={() => (qaDone ? router.push("/share") : router.push("/questions"))}
                         className="rounded-2xl py-3 bg-black/20 border border-white/20 text-white font-extrabold hover:bg-black/25 active:scale-[0.99] transition"
                       >
-                        مشاركة الآن
+                        {qaDone ? "مشاركة الآن" : "أكمل الأسئلة"}
                       </button>
                     </div>
                   </div>
@@ -398,20 +419,20 @@ export default function HomePage() {
               <>
                 <button
                   className="w-full rounded-3xl py-4 font-extrabold text-purple-700 bg-white shadow-[0_20px_60px_rgba(124,58,237,0.25)] active:scale-[0.99] transition"
-                  onClick={() => router.push("/share-progress")}
+                  onClick={goPrimary}
                 >
-                  عرض نقاطي
+                  {qaDone ? "عرض تقدّمي" : "أكمل الأسئلة"}
                 </button>
                 <p className="text-center text-sm text-gray-600 mt-2">
-                  تابع نقاطك وواصل المشاركة لزيادة فرصتك
+                  {qaDone
+                    ? "تابع نقاطك وواصل المشاركة لزيادة فرصتك"
+                    : "أجب على 3 أسئلة سريعة ثم ابدأ بالمشاركة"}
                 </p>
               </>
             )}
           </div>
         </div>
       </div>
-
-      {/* Animations */}
     </div>
   );
 }

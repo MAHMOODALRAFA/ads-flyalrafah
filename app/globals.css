@@ -6,7 +6,7 @@ body {
     "Segoe UI", Roboto, Arial, sans-serif;
 }
 
-/* Better Arabic rendering */
+/* Better rendering */
 html {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -28,5 +28,13 @@ html {
   width: max-content;
   white-space: nowrap;
   animation: flyMarquee 25s linear infinite;
+  will-change: transform;
+  gap: 24px;
 }
 
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .fly-marquee {
+    animation: none;
+  }
+}

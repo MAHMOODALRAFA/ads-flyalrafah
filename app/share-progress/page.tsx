@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { REQUIRED_SHARES, getPhone } from "../lib/referral";
+import {
+  REQUIRED_SHARES,
+  getPhone,
+  hasAnsweredQuestions,
+  hasStarted,
+} from "../lib/referral";
 
 type CheckResponse =
   | {
@@ -29,24 +34,62 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+type DemoStep = {
+  id: string;
+  title: string;
+  subtitle: string;
+  done: boolean;
+};
+
 export default function ShareProgressPage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
 
-  const [sharesCount, setSharesCount] = useState<number>(0);
+  // from DB (optional display)
   const [points, setPoints] = useState<number>(0);
   const [joins, setJoins] = useState<number>(0);
+  const [sharesCount, setSharesCount] = useState<number>(0);
 
   const [cooldownMinutes, setCooldownMinutes] = useState<number>(0);
   const [isBlocked, setIsBlocked] = useState<boolean>(false);
 
-  // ✅ 60s UI cooldown after WhatsApp click
-  const [uiCooldownLeftSec, setUiCooldownLeftSec] = useState<number>(0);
-  const uiCooldownActive = uiCooldownLeftSec > 0;
+  // demo state
+  const [demoActive, setDemoActive] = useState(false);
+  const [demoPercent, setDemoPercent] = useState(0);
+  const [steps, setSteps] = useState<DemoStep[]>([
+    {
+      id: "q",
+      title: "تم تأكيد إجابات الأسئلة ✅",
+      subtitle: "تم تسجيل اهتمامك بالسفر (مرة واحدة لكل رقم).",
+      done: false,
+    },
+    {
+      id: "share",
+      title: "تم تسجيل المشاركة ✅",
+      subtitle: "تم احتساب نقاط المشاركة وربطها برقمك.",
+      done: false,
+    },
+    {
+      id: "wa",
+      title: "فتح واتساب لإرسال الرابط ✅",
+      subtitle: "تم تجهيز الرسالة وفتح واتساب.",
+      done: false,
+    },
+    {
+      id: "friends",
+      title: `إرسال إلى ${REQUIRED_SHARES} أصدقاء ✅`,
+      subtitle: "بشكل تجريبي: نتحقق من عملية الإرسال...",
+      done: false,
+    },
+    {
+      id: "done",
+      title: "تم تفعيل دخولك للقرعة الشهرية ✅",
+      subtitle: "انتقل الآن للمرحلة الأخيرة واستلم كودك.",
+      done: false,
+    },
+  ]);
 
-  const [checking, setChecking] = useState(false);
-  const checkingRef = useRef(false);
   const phoneRef = useRef<string>("");
 
   async function fetchCheck(phone: string) {
@@ -80,14 +123,26 @@ export default function ShareProgressPage() {
       setCooldownMinutes(0);
     }
 
-    return computedShares;
+    return { points: p, joins: j, shares: computedShares };
   }
 
-  // ✅ initial load
+  // ✅ guards + initial load
   useEffect(() => {
+    // must have started + phone
+    if (!hasStarted()) {
+      router.replace("/start");
+      return;
+    }
+
     const phone = getPhone();
     if (!phone) {
       router.replace("/start");
+      return;
+    }
+
+    // must answer questions first
+    if (!hasAnsweredQuestions()) {
+      router.replace("/questions");
       return;
     }
 
@@ -99,6 +154,9 @@ export default function ShareProgressPage() {
       try {
         setLoading(true);
         await fetchCheck(phone);
+
+        // step 1 is done (questions)
+        setSteps((prev) => prev.map((s, idx) => (idx === 0 ? { ...s, done: true } : s)));
       } catch {
         if (!cancelled) router.replace("/start");
       } finally {
@@ -112,23 +170,76 @@ export default function ShareProgressPage() {
     };
   }, [router]);
 
-  // ✅ UI cooldown timer reader
+  // ✅ Start demo only if user came from Share click
   useEffect(() => {
+    if (loading) return;
+
+    const pending = sessionStorage.getItem("wa_pending_share") === "1";
     const untilRaw = sessionStorage.getItem("wa_cooldown_until");
     const until = Number(untilRaw || "0");
-    if (!until) return;
 
-    const tick = () => {
-      const leftMs = until - Date.now();
-      const leftSec = Math.max(0, Math.ceil(leftMs / 1000));
-      setUiCooldownLeftSec(leftSec);
+    if (!pending || !until) {
+      setDemoActive(false);
+      setDemoPercent(0);
+      return;
+    }
 
-      if (leftSec <= 0) {
-        sessionStorage.removeItem("wa_cooldown_until");
+    // demo starts
+    setDemoActive(true);
+
+    const start = Date.now();
+    const totalMs = Math.max(5_000, until - start); // fallback safety
+    const stepsCount = 5;
+
+    // mark step2 + step3 quickly (registered share + WhatsApp opened)
+    setSteps((prev) =>
+      prev.map((s, idx) => {
+        if (idx === 1 || idx === 2) return { ...s, done: true };
+        return s;
+      })
+    );
+
+    const tick = async () => {
+      const now = Date.now();
+      const elapsed = now - start;
+      const progress = clamp(elapsed / totalMs, 0, 1);
+      const percent = Math.round(progress * 100);
+      setDemoPercent(percent);
+
+      // map progress -> which steps are done
+      // step0 already done by questions
+      // step1+2 already done immediately
+      // step3 done after ~55%
+      // step4 done at end
+      setSteps((prev) =>
+        prev.map((s, idx) => {
+          if (idx === 0) return s; // already set
+          if (idx === 1 || idx === 2) return s; // already set
+          if (idx === 3) {
+            const done = progress >= 0.55;
+            return done ? { ...s, done: true } : s;
+          }
+          if (idx === 4) {
+            const done = progress >= 0.98;
+            return done ? { ...s, done: true } : s;
+          }
+          return s;
+        })
+      );
+
+      // finish
+      if (progress >= 1) {
+        // refresh points one last time (best-effort)
+        try {
+          await fetchCheck(phoneRef.current);
+        } catch {}
+
         sessionStorage.removeItem("wa_pending_share");
+        sessionStorage.removeItem("wa_cooldown_until");
 
-        // ✅ go to unlocked in “review” mode
-        sessionStorage.setItem("review_mode", "1");
+        // optional: allow unlocked page to show "new entry" animation
+        sessionStorage.setItem("entry_confirmed", "1");
+
         router.replace("/unlocked");
       }
     };
@@ -136,129 +247,37 @@ export default function ShareProgressPage() {
     tick();
     const t = setInterval(tick, 250);
     return () => clearInterval(t);
-  }, [router]);
+  }, [loading, router]);
 
-  // ✅ auto unlock after REQUIRED_SHARES (normal logic)
-  useEffect(() => {
-    if (!loading && sharesCount >= REQUIRED_SHARES) {
-      const t = setTimeout(() => router.push("/unlocked"), 700);
-      return () => clearTimeout(t);
-    }
-  }, [sharesCount, loading, router]);
-
-  // ✅ when return from WhatsApp focus, start auto-check (kept)
-  useEffect(() => {
-    function onVisibility() {
-      if (document.visibilityState === "visible") {
-        const pending = sessionStorage.getItem("wa_pending_share") === "1";
-        if (pending && !checkingRef.current) {
-          startAutoCheck();
-        }
-      }
-    }
-    document.addEventListener("visibilitychange", onVisibility);
-    window.addEventListener("focus", onVisibility);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("focus", onVisibility);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function startAutoCheck() {
-    const phone = phoneRef.current;
-    if (!phone) return;
-
-    checkingRef.current = true;
-    setChecking(true);
-
-    const startedAt = Date.now();
-    const timeoutMs = 60_000;
-    const intervalMs = 3_000;
-
-    try {
-      await fetchCheck(phone);
-    } catch {}
-
-    const timer = setInterval(async () => {
-      const elapsed = Date.now() - startedAt;
-
-      try {
-        const computedShares = await fetchCheck(phone);
-        if (computedShares >= REQUIRED_SHARES) {
-          clearInterval(timer);
-          checkingRef.current = false;
-          setChecking(false);
-          sessionStorage.removeItem("wa_pending_share");
-          return;
-        }
-      } catch {}
-
-      if (elapsed >= timeoutMs) {
-        clearInterval(timer);
-        checkingRef.current = false;
-        setChecking(false);
-        sessionStorage.removeItem("wa_pending_share");
-      }
-    }, intervalMs);
-  }
-
-  // ✅ progress bar: shares normally, timer when cooldown active
   const progressPercent = useMemo(() => {
-    if (uiCooldownActive) {
-      const done = 60 - clamp(uiCooldownLeftSec, 0, 60);
-      const v = (done / 60) * 100;
-      return Math.round(v);
-    }
+    if (demoActive) return demoPercent;
+
+    // fallback: show shares progress if user opened directly
     const v = (clamp(sharesCount, 0, REQUIRED_SHARES) / REQUIRED_SHARES) * 100;
     return Math.round(v);
-  }, [sharesCount, uiCooldownActive, uiCooldownLeftSec]);
+  }, [demoActive, demoPercent, sharesCount]);
 
   const progressRightText = useMemo(() => {
-    if (uiCooldownActive) {
-      const mm = String(Math.floor(uiCooldownLeftSec / 60)).padStart(1, "0");
-      const ss = String(uiCooldownLeftSec % 60).padStart(2, "0");
-      return `${mm}:${ss}`;
-    }
+    if (demoActive) return `${progressPercent}%`;
     return `${clamp(sharesCount, 0, REQUIRED_SHARES)} / ${REQUIRED_SHARES}`;
-  }, [sharesCount, uiCooldownActive, uiCooldownLeftSec]);
-
-  const progressLeftText = useMemo(() => {
-    if (uiCooldownActive) return "جارٍ الإرسال إلى 10 أشخاص...";
-    return `${progressPercent}%`;
-  }, [uiCooldownActive, progressPercent]);
-
-  const remaining = useMemo(() => {
-    return Math.max(0, REQUIRED_SHARES - clamp(sharesCount, 0, REQUIRED_SHARES));
-  }, [sharesCount]);
+  }, [demoActive, progressPercent, sharesCount]);
 
   const statusTitle = useMemo(() => {
-    if (uiCooldownActive) return "جارٍ التحقق من المشاركة... ⏳";
-    if (checking) return "جارٍ التحقق... ⏳";
-    if (sharesCount <= 0) return "ابدأ بالمشاركة الآن";
-    if (sharesCount >= REQUIRED_SHARES) return "تم تفعيل الدخول للسحب ✅";
-    return "✅ تم تسجيل مشاركة";
-  }, [sharesCount, checking, uiCooldownActive]);
+    if (demoActive) return "جارٍ تأكيد المشاركة... ⏳";
+    if (sharesCount >= REQUIRED_SHARES) return "تم تفعيل دخولك للقرعة ✅";
+    return "جاهز للمشاركة عبر واتساب";
+  }, [demoActive, sharesCount]);
 
   const statusText = useMemo(() => {
-    if (uiCooldownActive) {
-      return "انتظر دقيقة واحدة — سيتم نقلك تلقائياً للمرحلة التالية.";
+    if (demoActive) {
+      return "سيتم تفعيل دخولك تلقائياً بعد اكتمال المراحل.";
     }
-    if (sharesCount >= REQUIRED_SHARES) {
-      return "ممتاز! سيتم نقلك الآن للمرحلة الأخيرة...";
-    }
-    if (checking) {
-      return "انتظر لحظات... نراجع مشاركتك (قد يستغرق حتى دقيقة واحدة)";
-    }
-    return `شارك الرابط ${remaining} مرات أخرى للدخول في السحب الشهري`;
-  }, [sharesCount, remaining, checking, uiCooldownActive]);
+    return `شارك الرابط لزيادة نقاطك — كلما زادت نقاطك زادت فرصتك في الفوز 🎯`;
+  }, [demoActive]);
 
   if (loading) {
     return (
-      <main
-        dir="rtl"
-        className="min-h-screen bg-zinc-50 flex items-center justify-center p-6"
-      >
+      <main dir="rtl" className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
         <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-6 text-center">
           <div className="text-lg font-bold text-zinc-900">جارٍ التحميل...</div>
           <div className="text-sm text-zinc-500 mt-2">نحدّث تقدّمك</div>
@@ -267,18 +286,17 @@ export default function ShareProgressPage() {
     );
   }
 
+  const showNeedShare = !demoActive;
+
   return (
-    <main
-      dir="rtl"
-      className="min-h-screen bg-zinc-50 flex items-center justify-center p-6"
-    >
+    <main dir="rtl" className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
       <div className="w-full max-w-md">
-        {/* Step indicator */}
+        {/* Step indicator (overall flow 4 steps) */}
         <div className="flex justify-center mb-4">
           <div className="text-sm text-zinc-500">
             <span className="inline-block h-2 w-10 rounded-full bg-purple-600 align-middle ml-2" />
             <span className="inline-block h-2 w-10 rounded-full bg-purple-600 align-middle ml-2" />
-            <span className="inline-block h-2 w-10 rounded-full bg-purple-600/30 align-middle ml-2" />
+            <span className="inline-block h-2 w-10 rounded-full bg-purple-600 align-middle ml-2" />
             خطوة 3 من 4
           </div>
         </div>
@@ -289,7 +307,7 @@ export default function ShareProgressPage() {
           </h1>
 
           <div className="flex items-center justify-between text-sm text-zinc-500 mb-2">
-            <span>{progressLeftText}</span>
+            <span>{demoActive ? "المراحل" : "التقدّم"}</span>
             <span>{progressRightText}</span>
           </div>
 
@@ -300,12 +318,14 @@ export default function ShareProgressPage() {
             />
           </div>
 
+          {/* Icon */}
           <div className="flex justify-center mb-4">
             <div className="h-20 w-20 rounded-full bg-gradient-to-br from-purple-600 to-orange-400 flex items-center justify-center shadow-lg">
-              <span className="text-3xl text-white">🔗</span>
+              <span className="text-3xl text-white">{demoActive ? "⏳" : "🔗"}</span>
             </div>
           </div>
 
+          {/* Status box */}
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-center">
             <div className="text-lg font-semibold text-zinc-900">{statusTitle}</div>
             <div className="text-sm text-zinc-700 mt-1">{statusText}</div>
@@ -317,51 +337,83 @@ export default function ShareProgressPage() {
             ) : null}
           </div>
 
+          {/* ✅ 5 demo steps */}
           <div className="mt-4 rounded-2xl border border-purple-200 bg-purple-50 px-4 py-4">
+            <div className="font-bold text-zinc-900 mb-3">✅ مراحل التفعيل</div>
+
+            <div className="space-y-3">
+              {steps.map((s) => (
+                <div
+                  key={s.id}
+                  className="flex items-start justify-between gap-3 rounded-xl bg-white border border-zinc-200 px-4 py-3"
+                >
+                  <div>
+                    <div className="font-semibold text-zinc-900">{s.title}</div>
+                    <div className="text-xs text-zinc-600 mt-1">{s.subtitle}</div>
+                  </div>
+                  <div className="text-xl">{s.done ? "✅" : demoActive ? "⏳" : "⬜"}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Rules (no discount) */}
+          <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
             <div className="font-bold text-zinc-900 mb-2">📌 قواعد النقاط</div>
             <ul className="text-sm text-zinc-800 space-y-2">
               <li>✅ كل مشاركة للرابط = <b>1 نقطة</b></li>
               <li>👥 كل شخص يسجّل من رابطك = <b>+10 نقاط</b></li>
-              <li>🎁 بعد 3 مشاركات، يتم تسجيل اسمك في <b>السحب الشهري</b></li>
+              <li>
+                🎁 كلما زادت نقاطك = <b>فرصة أكبر</b> في الفوز بالقرعة الشهرية
+              </li>
             </ul>
           </div>
 
-          <button
-            onClick={() => {
-              sessionStorage.setItem("wa_pending_share", "1");
-              router.push("/share");
-            }}
-            disabled={checking || uiCooldownActive}
-            className="w-full mt-5 rounded-2xl py-4 bg-green-500 text-white font-bold shadow-md hover:bg-green-600 transition disabled:opacity-60 disabled:hover:bg-green-500"
-          >
-            {uiCooldownActive
-              ? "انتظر... جارٍ الإرسال ⏳"
-              : checking
-              ? "جارٍ التحقق..."
-              : "مشاركة الرابط عبر واتساب"}
-          </button>
+          {/* Actions */}
+          {showNeedShare ? (
+            <>
+              <button
+                onClick={() => router.push("/share")}
+                className="w-full mt-5 rounded-2xl py-4 bg-green-500 text-white font-bold shadow-md hover:bg-green-600 transition"
+              >
+                مشاركة الرابط عبر واتساب
+              </button>
 
-          <div className="grid grid-cols-2 gap-3 mt-3">
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <button
+                  onClick={() => router.push("/check")}
+                  className="rounded-2xl py-4 bg-zinc-900 text-white font-bold hover:opacity-90 transition"
+                >
+                  عرض النقاط
+                </button>
+
+                <button
+                  onClick={async () => {
+                    try {
+                      await fetchCheck(phoneRef.current);
+                    } catch {
+                      // ignore
+                    }
+                  }}
+                  className="rounded-2xl py-4 bg-zinc-100 text-zinc-700 font-bold hover:bg-zinc-200 transition"
+                >
+                  تحديث
+                </button>
+              </div>
+
+              <p className="text-center text-xs text-zinc-400 mt-4">
+                (للتجربة) النقاط: {points} — الأصدقاء المنضمّون: {joins} — المشاركات المحسوبة:{" "}
+                {sharesCount}
+              </p>
+            </>
+          ) : (
             <button
-              onClick={() => router.push("/check")}
-              className="rounded-2xl py-4 bg-zinc-900 text-white font-bold hover:opacity-90 transition"
+              disabled
+              className="w-full mt-5 rounded-2xl py-4 bg-zinc-200 text-zinc-600 font-bold cursor-not-allowed"
             >
-              عرض النقاط
+              جارٍ التفعيل... ⏳
             </button>
-
-            <button
-              onClick={() => startAutoCheck()}
-              disabled={checking || uiCooldownActive}
-              className="rounded-2xl py-4 bg-zinc-100 text-zinc-700 font-bold hover:bg-zinc-200 transition disabled:opacity-60"
-            >
-              {checking || uiCooldownActive ? "..." : "تحديث الصفحة"}
-            </button>
-          </div>
-
-          <p className="text-center text-xs text-zinc-400 mt-4">
-            (للتجربة) النقاط: {points} — الأصدقاء المنضمّون: {joins} — المشاركات المحسوبة:{" "}
-            {sharesCount}
-          </p>
+          )}
         </div>
       </div>
     </main>

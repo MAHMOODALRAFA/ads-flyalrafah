@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getPhone } from "../lib/referral";
+import { getPhone, hasAnsweredQuestions, hasStarted } from "../lib/referral";
 
 type CheckResponse =
   | {
@@ -20,11 +20,6 @@ type CheckResponse =
     }
   | { ok: false; error: string };
 
-function pointsToOmr(points: number) {
-  // 1 point = 0.001 OMR
-  return (points * 0.001).toFixed(3);
-}
-
 export default function UnlockedPage() {
   const router = useRouter();
 
@@ -33,26 +28,49 @@ export default function UnlockedPage() {
   const [points, setPoints] = useState(0);
   const [joins, setJoins] = useState(0);
 
+  const [highlightEntry, setHighlightEntry] = useState(false);
+
   const referralLink = useMemo(() => {
     return `https://flyalrafah.com/r/${refCode}`;
   }, [refCode]);
 
   const shareText = useMemo(() => {
-    return `🎁 فرصة ربح 100 ريال (سحب شهري)
-✈️ خصم على تذاكر السفر من FlyAlrafah
+    return `🎉 تم تسجيلك في قرعة FlyAlrafah الشهرية!
 
 استخدم رابطّي للتسجيل:
 ${referralLink}
 
 ✅ كل مشاركة = 1 نقطة
-👥 كل صديق يسجّل من رابطك = +10 نقاط`;
+👥 كل صديق يسجّل من رابطك = +10 نقاط
+
+⭐ نقاط أكثر = فرصة أكبر للفوز`;
   }, [referralLink]);
 
   useEffect(() => {
+    // ✅ Guard: must have started + phone
+    if (!hasStarted()) {
+      router.replace("/start");
+      return;
+    }
+
     const phone = getPhone();
     if (!phone) {
       router.replace("/start");
       return;
+    }
+
+    // ✅ Must answer questions first
+    if (!hasAnsweredQuestions()) {
+      router.replace("/questions");
+      return;
+    }
+
+    // ✅ Special highlight if we came from demo progress finish
+    const entryConfirmed = sessionStorage.getItem("entry_confirmed") === "1";
+    if (entryConfirmed) {
+      setHighlightEntry(true);
+      // cleanup so it won't show every time
+      sessionStorage.removeItem("entry_confirmed");
     }
 
     let cancelled = false;
@@ -65,6 +83,7 @@ ${referralLink}
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ phone }),
+          cache: "no-store",
         });
 
         const data = (await res.json().catch(() => null)) as CheckResponse | null;
@@ -107,9 +126,17 @@ ${referralLink}
     }
   }
 
+  function shareAgain() {
+    const url = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+    window.open(url, "_blank");
+  }
+
   if (loading) {
     return (
-      <main dir="rtl" className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
+      <main
+        dir="rtl"
+        className="min-h-screen bg-zinc-50 flex items-center justify-center p-6"
+      >
         <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-6 text-center">
           <div className="text-lg font-bold text-zinc-900">جارٍ التحميل...</div>
           <div className="text-sm text-zinc-500 mt-2">نجهّز بياناتك</div>
@@ -119,38 +146,61 @@ ${referralLink}
   }
 
   return (
-    <main dir="rtl" className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
+    <main
+      dir="rtl"
+      className="min-h-screen bg-zinc-50 flex items-center justify-center p-6"
+    >
       <div className="w-full max-w-md">
         <div className="bg-white rounded-2xl shadow-lg p-6">
           {/* Header */}
           <div className="flex justify-center mb-4">
-            <div className="h-16 w-16 rounded-full bg-green-100 flex items-center justify-center">
-              <span className="text-3xl">🎉</span>
+            <div
+              className={[
+                "h-16 w-16 rounded-full flex items-center justify-center",
+                highlightEntry ? "bg-gradient-to-br from-purple-600 to-amber-400" : "bg-green-100",
+              ].join(" ")}
+            >
+              <span className="text-3xl">{highlightEntry ? "🏆" : "🎉"}</span>
             </div>
           </div>
 
           <h1 className="text-2xl font-bold text-center text-zinc-900">
-            تم تسجيلك في السحب الشهري ✅
+            تم تسجيلك في القرعة الشهرية ✅
           </h1>
-          <p className="text-center text-zinc-500 mt-2">
-            اسمك الآن ضمن قرعة FlyAlrafah الشهرية — ويمكنك جمع نقاط أكثر للحصول على خصومات.
+
+          <p className="text-center text-zinc-600 mt-2">
+            {highlightEntry
+              ? "مبروك! تم تأكيد دخولك للقرعة — استمر بالمشاركة لرفع فرصتك 🔥"
+              : "اسمك الآن ضمن قرعة FlyAlrafah الشهرية — وكلما زادت نقاطك زادت فرصتك 🎯"}
           </p>
+
+          {/* Badge Row */}
+          <div className="mt-4 flex items-center justify-center gap-2">
+            <span className="px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-xs font-bold border border-purple-100">
+              🎟️ قرعة شهرية
+            </span>
+            <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-bold border border-amber-100">
+              ⭐ نقاط أكثر = فرصة أكبر
+            </span>
+          </div>
 
           {/* Code box */}
           <div className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4 text-center">
             <div className="text-xs text-zinc-500 mb-1">الكود الخاص بك</div>
-            <div className="text-2xl font-extrabold tracking-widest text-zinc-900">{refCode}</div>
+            <div className="text-2xl font-extrabold tracking-widest text-zinc-900">
+              {refCode}
+            </div>
 
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 grid grid-cols-2 gap-2">
               <button
                 onClick={() => copy(refCode)}
-                className="flex-1 rounded-xl py-3 bg-zinc-900 text-white font-bold hover:opacity-90"
+                className="rounded-xl py-3 bg-zinc-900 text-white font-bold hover:opacity-90 transition"
               >
                 نسخ الكود
               </button>
               <button
                 onClick={() => copy(referralLink)}
-                className="flex-1 rounded-xl py-3 bg-purple-100 text-purple-700 font-bold hover:bg-purple-200"
+                className="rounded-xl py-3 bg-purple-100 text-purple-700 font-bold hover:bg-purple-200 transition"
               >
                 نسخ الرابط
               </button>
@@ -162,7 +212,7 @@ ${referralLink}
             <div className="rounded-2xl border border-zinc-200 p-4 text-center">
               <div className="text-xs text-zinc-500">نقاطك</div>
               <div className="text-2xl font-bold text-zinc-900">{points}</div>
-              <div className="text-xs text-zinc-500 mt-1">{pointsToOmr(points)} OMR</div>
+              <div className="text-xs text-zinc-500 mt-1">كل نقطة تزيد فرصتك</div>
             </div>
 
             <div className="rounded-2xl border border-zinc-200 p-4 text-center">
@@ -174,20 +224,17 @@ ${referralLink}
 
           {/* Rules box */}
           <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
-            <div className="font-bold text-zinc-900 mb-2">📌 قواعد النقاط</div>
+            <div className="font-bold text-zinc-900 mb-2">📌 كيف تزيد فرصتك؟</div>
             <ul className="text-sm text-zinc-700 space-y-2">
               <li>✅ كل مشاركة للرابط = <b>1 نقطة</b></li>
               <li>👥 كل صديق يسجّل من رابطك = <b>+10 نقاط</b></li>
-              <li>🎁 كلما زادت نقاطك، زادت فرصك في الخصومات والسحب الشهري</li>
+              <li>🏆 <b>نقاط أكثر</b> تعني <b>فرصة أكبر</b> للفوز في القرعة الشهرية</li>
             </ul>
           </div>
 
           {/* CTA */}
           <button
-            onClick={() => {
-              const url = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
-              window.open(url, "_blank");
-            }}
+            onClick={shareAgain}
             className="w-full mt-5 rounded-2xl py-4 bg-green-500 text-white font-bold shadow-md hover:bg-green-600 transition"
           >
             مشاركة الرابط مرة أخرى عبر واتساب 🔗
@@ -202,7 +249,7 @@ ${referralLink}
         </div>
 
         <p className="text-center text-xs text-zinc-400 mt-4">
-          يمكنك الاستمرار في جمع النقاط عبر مشاركة الرابط ودعوة أصدقاء جدد.
+          استمر بمشاركة الرابط — نقاط أكثر = فرصة أكبر للفوز 🎯
         </p>
       </div>
     </main>

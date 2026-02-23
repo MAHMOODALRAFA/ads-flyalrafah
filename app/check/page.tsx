@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getPhone, hasStarted } from "@/app/lib/referral";
+import { getPhone, hasStarted, hasAnsweredQuestions } from "@/app/lib/referral";
 
 type CheckResponse =
   | {
@@ -70,6 +70,8 @@ export default function CheckPage() {
   const user = data && data.ok ? data.user : null;
   const cooldown = data && data.ok ? data.shareCooldown : null;
 
+  const qaDone = hasAnsweredQuestions();
+
   return (
     <main dir="rtl" className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
       <div className="w-full max-w-md">
@@ -92,6 +94,12 @@ export default function CheckPage() {
           <p className="text-center text-sm text-zinc-500 mb-6">
             تابع نقاطك و شارك رابطك مع الأصدقاء
           </p>
+
+          {!qaDone ? (
+            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-zinc-800">
+              ⚠️ قبل المشاركة، أكمل 3 أسئلة سريعة لتفعيل الحساب.
+            </div>
+          ) : null}
 
           {loading ? (
             <div className="text-center text-zinc-600">جاري التحميل...</div>
@@ -140,17 +148,17 @@ export default function CheckPage() {
               </div>
 
               <button
-                onClick={() => router.push("/share")}
+                onClick={() => router.push(qaDone ? "/share" : "/questions")}
                 className="w-full rounded-2xl py-4 bg-purple-600 text-white font-bold shadow-md hover:bg-purple-700 transition"
               >
-                الذهاب لصفحة المشاركة
+                {qaDone ? "الذهاب لصفحة المشاركة" : "أكمل الأسئلة أولاً"}
               </button>
 
               <button
-                onClick={() => router.push("/share-progress")}
+                onClick={() => router.push(qaDone ? "/share-progress" : "/questions")}
                 className="w-full rounded-2xl py-3 bg-zinc-100 text-zinc-900 font-bold"
               >
-                عرض التقدم
+                {qaDone ? "عرض التقدم" : "الذهاب للأسئلة"}
               </button>
             </div>
           )}

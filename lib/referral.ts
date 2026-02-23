@@ -4,7 +4,12 @@
 const REF_CODE_KEY = "flyalrafah_ref_code";
 const SHARE_COUNT_KEY = "flyalrafah_share_count";
 const PHONE_KEY = "flyalrafah_phone";
-const DISCOUNT_KEY = "flyalrafah_discount_code";
+
+/**
+ * ✅ Discount concept removed from UI.
+ * ⚠️ Kept keys/functions for backward compatibility (in case other pages still import them).
+ */
+const DISCOUNT_KEY = "flyalrafah_discount_code"; // legacy
 
 // session
 const STARTED_AT_KEY = "flyalrafah_started_at";
@@ -16,11 +21,14 @@ const SIG_SUFFIX = "__sig";
 const SECRET = "flyalrafah_v1_secret_2026";
 
 // share logic
-export const REQUIRED_SHARES = 3;
+export const REQUIRED_SHARES = 5; // ✅ user wants 5 friends (demo stages)
 
 // cooldown (optional)
 const LAST_SHARE_TS_KEY = "flyalrafah_last_share_ts";
 const SHARE_COOLDOWN_MS = 20_000;
+
+// questions (1-time per phone)
+const QA_DONE_PREFIX = "flyalrafah_questions_done__";
 
 /** -------------------- helpers -------------------- */
 
@@ -157,6 +165,40 @@ export function hasStarted(): boolean {
   return true;
 }
 
+/** -------------------- questions (1-time per phone) -------------------- */
+
+function qaKeyForPhone(phone: string) {
+  return `${QA_DONE_PREFIX}${phone || "unknown"}`;
+}
+
+export function hasAnsweredQuestions(): boolean {
+  if (!hasStarted()) return false;
+  const phone = getPhone();
+  if (!phone) return false;
+
+  const key = qaKeyForPhone(phone);
+  const v = readSigned(key, "0");
+  if (v === "__TAMPERED__") {
+    removeSigned(key);
+    return false;
+  }
+  return v === "1";
+}
+
+export function markQuestionsAnswered() {
+  if (!hasStarted()) return;
+  const phone = getPhone();
+  if (!phone) return;
+  const key = qaKeyForPhone(phone);
+  writeSigned(key, "1");
+}
+
+export function resetQuestionsAnswered() {
+  const phone = readSigned(PHONE_KEY, "");
+  if (!phone || phone === "__TAMPERED__") return;
+  removeSigned(qaKeyForPhone(phone));
+}
+
 /** -------------------- ref code -------------------- */
 
 export function getRefCode(): string {
@@ -178,7 +220,7 @@ export function resetRefCode() {
   removeSigned(REF_CODE_KEY);
 }
 
-/** -------------------- share count -------------------- */
+/** -------------------- local share count (legacy/demo) -------------------- */
 
 export function getShareCount(): number {
   const v = readSigned(SHARE_COUNT_KEY, "0");
@@ -231,7 +273,7 @@ export function isUnlocked(): boolean {
   return getShareCount() >= REQUIRED_SHARES;
 }
 
-/** -------------------- discount -------------------- */
+/** -------------------- legacy discount exports (no longer used) -------------------- */
 
 export function makeCoupon(code: string) {
   const safe = (code || "XXXX").toUpperCase().slice(0, 6);
@@ -243,6 +285,7 @@ function makeDiscountCode() {
 }
 
 export function getOrCreateDiscountCode(): string {
+  // legacy only
   if (typeof window === "undefined") return "FLY-XXXXXX";
 
   const saved = readSigned(DISCOUNT_KEY, "");
@@ -261,9 +304,8 @@ export function resetDiscountCode() {
   removeSigned(DISCOUNT_KEY);
 }
 
-export function computeDiscountAmount(shareCount: number): number {
-  if (shareCount >= 3) return 3;
-  if (shareCount >= 1) return 2;
+export function computeDiscountAmount(_shareCount: number): number {
+  // legacy only (discount removed)
   return 0;
 }
 
@@ -274,7 +316,8 @@ export function verifyReferralOrReset(): {
   refCode: string;
   shareCount: number;
 } {
-  if (typeof window === "undefined") return { tampered: false, refCode: "", shareCount: 0 };
+  if (typeof window === "undefined")
+    return { tampered: false, refCode: "", shareCount: 0 };
 
   const rc = readSigned(REF_CODE_KEY, "");
   const sc = readSigned(SHARE_COUNT_KEY, "0");
@@ -301,6 +344,12 @@ export function resetAll() {
   removeSigned(SHARE_COUNT_KEY);
   removeSigned(DISCOUNT_KEY);
   removeSigned(LAST_SHARE_TS_KEY);
+
+  // questions flag
+  const phone = readSigned(PHONE_KEY, "");
+  if (phone && phone !== "__TAMPERED__") {
+    removeSigned(qaKeyForPhone(phone));
+  }
 
   // optional:
   // localStorage.removeItem(DEVICE_ID_KEY);
