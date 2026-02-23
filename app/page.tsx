@@ -53,13 +53,10 @@ export default function HomePage() {
       const p = getPhone();
       setPhoneState(p);
 
-      // questions state
       setQaDone(hasAnsweredQuestions());
 
-      // fallback local
       setPoints(getShareCount());
 
-      // fetch from DB
       fetchPointsFromDb(p);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -117,12 +114,11 @@ export default function HomePage() {
         return;
       }
 
-      // ✅ success: save phone + update UI state
       setPhone(p);
       setStarted(true);
       setPhoneState(p);
       setPoints(Number(data.user.points || 0));
-      setQaDone(hasAnsweredQuestions()); // read from local for this device
+      setQaDone(hasAnsweredQuestions());
     } catch {
       setLookupError("حدث خطأ، حاول مرة أخرى");
     } finally {
@@ -142,7 +138,6 @@ export default function HomePage() {
   }
 
   function goPrimary() {
-    // main CTA based on questions completion
     if (!started) {
       router.push("/start");
       return;
@@ -154,18 +149,24 @@ export default function HomePage() {
     router.push("/share-progress");
   }
 
-  function goShareNow() {
-    if (!started) return router.push("/start");
-    if (!qaDone) return router.push("/questions");
-    router.push("/share");
-  }
+  const primaryBtnText = useMemo(() => {
+    if (!started) return "ابدأ الآن ✅";
+    if (!qaDone) return "أكمل الأسئلة ✅";
+    return "عرض تقدّمي ✅";
+  }, [started, qaDone]);
 
-  const winnersText = useMemo(() => {
-    // ✅ no discount language — raffle/prizes only
+  const primaryHint = useMemo(() => {
+    if (!started) return "ابدأ خلال أقل من 30 ثانية";
+    if (!qaDone) return "أجب على 3 أسئلة سريعة ثم ابدأ بالمشاركة";
+    return "تابع نقاطك وواصل المشاركة لزيادة فرصتك";
+  }, [started, qaDone]);
+
+  // ✅ نوار: تعريف بنا (بدون أسماء فائزين) — (لا يتم حذفه)
+  const introText = useMemo(() => {
     const items = [
-      "الفائزون هذا الشهر: محمود — تذكرة مجانية مسقط ⇄ شيراز 🎉",
-      "الفائزون هذا الشهر: سالم — قسيمة سفر 50 ريال ✨",
-      "الفائزون هذا الشهر: نورة — باقة هدايا سفر 🎁",
+      "FlyAlrafah — عروض سفر وخدمة سريعة عبر الواتساب ✈️",
+      "شارك الرابط واجمع نقاطك للدخول في السحب الشهري 🏆",
+      "تابع إنستغرامنا @flyalrafah (شرط للدخول) 📲",
     ];
     return items.join("   •   ");
   }, []);
@@ -197,7 +198,7 @@ export default function HomePage() {
         <div className="absolute right-[-140px] bottom-[-140px] h-[360px] w-[360px] rounded-full bg-purple-300/12 blur-3xl" />
       </div>
 
-      <div className="relative z-10 min-h-screen flex flex-col px-6 pb-28">
+      <div className="relative z-10 min-h-screen flex flex-col px-6 pb-10">
         {/* Logo */}
         <div className="pt-10 pb-4">
           <div className="mx-auto w-full max-w-md flex items-center justify-center">
@@ -214,16 +215,16 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Winners strip */}
+        {/* ✅ Intro strip (nوار التعريف) */}
         <div className="mx-auto w-full max-w-md">
           <div className="relative overflow-hidden rounded-2xl border border-white/25 bg-white/10 backdrop-blur-xl">
             <div className="px-4 py-2 text-xs text-white/90">
               <div className="fly-marquee">
                 <div className="flex shrink-0">
-                  <span className="pe-12">{winnersText}</span>
+                  <span className="pe-12">{introText}</span>
                 </div>
                 <div className="flex shrink-0">
-                  <span className="pe-12">{winnersText}</span>
+                  <span className="pe-12">{introText}</span>
                 </div>
               </div>
             </div>
@@ -254,25 +255,68 @@ export default function HomePage() {
               </div>
 
               <div className="mt-4 text-sm">
-                <div className="rounded-2xl bg-white/15 border border-white/15 px-4 py-4 text-center">
+                <div className="rounded-2xl bg-white/15 border border-white/15 px-4 py-4 text-center space-y-2">
                   <div className="text-white font-extrabold text-base">
                     شارك مع {5} من أصدقائك 🚀
                   </div>
-                  <div className="text-white/85 mt-1">
+                  <div className="text-white/85">
                     بعدها يتم تفعيل دخولك للقرعة — واستمر للمزيد من النقاط ⭐
+                  </div>
+
+                  {/* ✅ شرط الانستغرام */}
+                  <div className="pt-2 border-t border-white/20 text-white/95 font-bold">
+                    📲 شرط الدخول: متابعة إنستغرامنا <span className="underline">@flyalrafah</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Card 2 */}
+            {/* Card 2 (no 500) */}
             <div className="rounded-3xl px-6 py-5 bg-white/10 backdrop-blur-xl border border-white/25 text-white shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
               <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/15">
                 🏆
               </div>
               <div className="font-extrabold text-xl">جوائز شهرية قوية</div>
               <div className="mt-1 text-white/85">
-                كل شهر فائزين — تذاكر مجانية أو قسائم سفر ✨
+                تذاكر مجانية أو قسائم سفر — حسب السحب الشهري ✨
+              </div>
+            </div>
+
+            {/* Middle Green CTA Block */}
+            <div className="rounded-3xl border border-white/25 bg-gradient-to-r from-emerald-500 to-green-400 text-white shadow-[0_18px_50px_rgba(0,0,0,0.25)] overflow-hidden">
+              <div className="px-6 py-5">
+                <div className="flex items-center justify-between">
+                  <div className="text-right">
+                    <div className="text-xs text-white/90">🚀 للتسجيل ابدأ من هنا</div>
+                  </div>
+
+                  <div className="h-12 w-12 rounded-2xl bg-white/20 border border-white/25 flex items-center justify-center text-2xl">
+                    ✅
+                  </div>
+                </div>
+
+                {/* ✅ شروط مختصرة داخل البلوك */}
+                <div className="mt-4 rounded-2xl bg-black/15 border border-white/20 px-4 py-4 text-center">
+                  <div className="font-extrabold mb-2">📝 ابدأ خلال أقل من 30 ثانية</div>
+                  <ul className="text-sm text-white/90 space-y-2">
+                  </ul>
+                </div>
+
+                <button
+                  onClick={goPrimary}
+                  className="w-full mt-4 rounded-2xl py-4 bg-white text-emerald-700 font-extrabold shadow-[0_18px_50px_rgba(255,255,255,0.25)] hover:opacity-95 active:scale-[0.99] transition"
+                >
+                  {primaryBtnText}
+                </button>
+
+                {started ? (
+                  <button
+                    onClick={() => (qaDone ? router.push("/share") : router.push("/questions"))}
+                    className="w-full mt-3 rounded-2xl py-4 bg-black/20 border border-white/25 text-white font-extrabold hover:bg-black/25 active:scale-[0.99] transition"
+                  >
+                    {qaDone ? "مشاركة الآن 🔗" : "أكمل الأسئلة الآن ✍️"}
+                  </button>
+                ) : null}
               </div>
             </div>
 
@@ -397,39 +441,6 @@ export default function HomePage() {
                 </>
               )}
             </div>
-          </div>
-        </div>
-
-        {/* Bottom CTA */}
-        <div className="fixed bottom-0 left-0 right-0 z-20">
-          <div className="px-6 pb-8 pt-6 bg-white/90 backdrop-blur-xl shadow-[0_-20px_60px_rgba(0,0,0,0.25)]">
-            {!started ? (
-              <>
-                <button
-                  className="w-full rounded-3xl py-4 font-extrabold text-purple-700 bg-white shadow-[0_20px_60px_rgba(124,58,237,0.25)] active:scale-[0.99] transition"
-                  onClick={() => router.push("/start")}
-                >
-                  ابدأ الآن
-                </button>
-                <p className="text-center text-sm text-gray-600 mt-2">
-                  يستغرق أقل من 30 ثانية
-                </p>
-              </>
-            ) : (
-              <>
-                <button
-                  className="w-full rounded-3xl py-4 font-extrabold text-purple-700 bg-white shadow-[0_20px_60px_rgba(124,58,237,0.25)] active:scale-[0.99] transition"
-                  onClick={goPrimary}
-                >
-                  {qaDone ? "عرض تقدّمي" : "أكمل الأسئلة"}
-                </button>
-                <p className="text-center text-sm text-gray-600 mt-2">
-                  {qaDone
-                    ? "تابع نقاطك وواصل المشاركة لزيادة فرصتك"
-                    : "أجب على 3 أسئلة سريعة ثم ابدأ بالمشاركة"}
-                </p>
-              </>
-            )}
           </div>
         </div>
       </div>
