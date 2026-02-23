@@ -1,31 +1,39 @@
+// app/api/admin/reset/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 
+function isAdmin(req: Request) {
+  const token = req.headers.get("x-admin-token") || "";
+  const pass = (process.env.ADMIN_PASS || "").trim();
+  if (!pass) return false;
+  return token === pass;
+}
+
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({} as any));
-
-    const pass = String(body.pass || "");
-    const adminPass = process.env.ADMIN_PASS || "";
-    if (!adminPass || pass !== adminPass) {
+    if (!isAdmin(req)) {
       return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
     }
 
-    const phone = String(body.phone || "").trim();
-    if (!phone) {
-      return NextResponse.json({ ok: false, error: "missing_phone" }, { status: 400 });
+    const body = await req.json().catch(() => ({} as any));
+    const userId = String(body.userId || "");
+    const wipeReferrals = Boolean(body.wipeReferrals); // اختیاری
+
+    if (!userId) {
+      return NextResponse.json({ ok: false, error: "missing_userId" }, { status: 400 });
     }
 
     const updated = await prisma.user.update({
-      where: { phone },
-      data: {
-        points: 0,
-        lastShareAt: null,
-      },
-      select: { phone: true, refCode: true, points: true, lastShareAt: true },
+      where: { id: userId },
+      data: { points: 0, lastShareAt: null },
+      select: { id: true, phone: true, points: true, lastShareAt: true, refCode: true },
     });
 
-    return NextResponse.json({ ok: true, user: updated });
+    if (wipeReferrals) {
+      await prisma.referral.deleteMany({ where: { referrerId: userId } });
+    }
+
+    return NextResponse.json({ ok: true, user: updated, wipedReferrals: wipeReferrals });
   } catch {
     return NextResponse.json({ ok: false, error: "server_error" }, { status: 500 });
   }

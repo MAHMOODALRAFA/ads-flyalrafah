@@ -26,7 +26,10 @@ export default function AdminLoginPage() {
       return;
     }
 
+    // ✅ مهم‌ترین تغییر
     localStorage.setItem("admin", "1");
+    localStorage.setItem("admin_token", pass); // ← اضافه شد
+
     router.push("/admin/panel");
   }
 
