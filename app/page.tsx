@@ -309,12 +309,13 @@ export default function HomePage() {
             <div className="rounded-3xl px-6 py-5 bg-white/10 backdrop-blur-xl border border-white/25 text-white shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
               <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/15">
                 🏆
-              </div>
-              <div className="font-extrabold text-xl">جوائز شهرية قوية</div>
-              <div className="mt-1 text-white/85">
-                تذاكر مجانية أو قسائم سفر — حسب السحب الشهري ✨
-              </div>
-            </div>
+           </div>
+           <div className="font-extrabold text-xl">جوائز شهرية قوية</div>
+           <div className="mt-1 text-white/85">
+  تذاكر مجانية أو قسائم سفر — حسب السحب الشهري ✨
+  <span className="block mt-1">💰 10 فائزين × 50 ريال</span>
+           </div>
+           </div>
 
             {/* Card 3: Lookup / Status (بدون تغییر) */}
             <div className="rounded-3xl px-6 py-5 text-white shadow-[0_18px_50px_rgba(0,0,0,0.22)] border border-white/20 bg-gradient-to-br from-fuchsia-600/70 via-purple-600/55 to-amber-400/40 backdrop-blur-xl ring-1 ring-white/25 relative overflow-hidden text-right">
