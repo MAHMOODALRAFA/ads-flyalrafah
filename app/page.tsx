@@ -150,7 +150,7 @@ export default function HomePage() {
   }
 
   const primaryBtnText = useMemo(() => {
-    if (!started) return "ابدأ الآن ✅";
+    if (!started) return "ابدأ الآن"; // ✅ بدون أيقونة/إيموجي
     if (!qaDone) return "أكمل الأسئلة ✅";
     return "عرض تقدّمي ✅";
   }, [started, qaDone]);
@@ -215,7 +215,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* ✅ Intro strip (nوار التعريف) */}
+        {/* ✅ Intro strip */}
         <div className="mx-auto w-full max-w-md">
           <div className="relative overflow-hidden rounded-2xl border border-white/25 bg-white/10 backdrop-blur-xl">
             <div className="px-4 py-2 text-xs text-white/90">
@@ -255,23 +255,57 @@ export default function HomePage() {
               </div>
 
               <div className="mt-4 text-sm">
-                <div className="rounded-2xl bg-white/15 border border-white/15 px-4 py-4 text-center space-y-2">
-                  <div className="text-white font-extrabold text-base">
-                    شارك مع {5} من أصدقائك 🚀
-                  </div>
-                  <div className="text-white/85">
-                    بعدها يتم تفعيل دخولك للقرعة — واستمر للمزيد من النقاط ⭐
+                <div className="rounded-2xl bg-white/15 border border-white/15 px-4 py-4 text-center space-y-3">
+                  {/* شروط */}
+                  <div className="text-white font-extrabold text-base">الشروط ✅</div>
+
+                  <div className="grid gap-2">
+                    <div className="rounded-xl bg-black/10 border border-white/15 px-3 py-2 font-bold text-white">
+                      شارك مع {5} من أصدقائك 🚀
+                    </div>
+
+                    <div className="rounded-xl bg-black/10 border border-white/15 px-3 py-2 font-bold text-white">
+                      متابعة إنستغرامنا <span className="underline">@flyalrafah</span> 📲
+                    </div>
                   </div>
 
-                  {/* ✅ شرط الانستغرام */}
-                  <div className="pt-2 border-t border-white/20 text-white/95 font-bold">
-                    📲 شرط الدخول: متابعة إنستغرامنا <span className="underline">@flyalrafah</span>
+                  {/* ✅ النص الجديد */}
+                  <div className="text-white/90 font-semibold">
+                    للبدء والتسجيل اضغط على زر <span className="underline">ابدأ الآن</span>
+                  </div>
+
+                  {/* ✅ CTA أبيض داخل البرتقالي */}
+                  <div className="mt-2 rounded-2xl bg-white/95 border border-white/50 px-4 py-4 text-center shadow-[0_18px_45px_rgba(0,0,0,0.18)]">
+                    <div className="text-xs text-zinc-700 mb-3">🚀 {primaryHint}</div>
+
+                    {/* ✅ زر واتسابي + نص أكبر + بدون أيقونة */}
+                    <button
+                      onClick={goPrimary}
+                      className="w-full rounded-2xl py-4 text-white font-extrabold text-lg sm:text-xl
+                                 bg-gradient-to-r from-emerald-600 via-emerald-500 to-green-400
+                                 border border-white/35
+                                 shadow-[0_18px_55px_rgba(16,185,129,0.38)]
+                                 hover:brightness-[1.03] active:scale-[0.99] transition"
+                    >
+                      {primaryBtnText}
+                    </button>
+
+                    {started ? (
+                      <button
+                        onClick={() =>
+                          qaDone ? router.push("/share") : router.push("/questions")
+                        }
+                        className="w-full mt-3 rounded-2xl py-4 bg-black/10 border border-black/10 text-zinc-900 font-extrabold hover:bg-black/15 active:scale-[0.99] transition"
+                      >
+                        {qaDone ? "مشاركة الآن 🔗" : "أكمل الأسئلة الآن ✍️"}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Card 2 (no 500) */}
+            {/* Card 2 */}
             <div className="rounded-3xl px-6 py-5 bg-white/10 backdrop-blur-xl border border-white/25 text-white shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
               <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/15">
                 🏆
@@ -282,45 +316,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Middle Green CTA Block */}
-            <div className="rounded-3xl border border-white/25 bg-gradient-to-r from-emerald-500 to-green-400 text-white shadow-[0_18px_50px_rgba(0,0,0,0.25)] overflow-hidden">
-              <div className="px-6 py-5">
-                <div className="flex items-center justify-between">
-                  <div className="text-right">
-                    <div className="text-xs text-white/90">🚀 للتسجيل ابدأ من هنا</div>
-                  </div>
-
-                  <div className="h-12 w-12 rounded-2xl bg-white/20 border border-white/25 flex items-center justify-center text-2xl">
-                    ✅
-                  </div>
-                </div>
-
-                {/* ✅ شروط مختصرة داخل البلوك */}
-                <div className="mt-4 rounded-2xl bg-black/15 border border-white/20 px-4 py-4 text-center">
-                  <div className="font-extrabold mb-2">📝 ابدأ خلال أقل من 30 ثانية</div>
-                  <ul className="text-sm text-white/90 space-y-2">
-                  </ul>
-                </div>
-
-                <button
-                  onClick={goPrimary}
-                  className="w-full mt-4 rounded-2xl py-4 bg-white text-emerald-700 font-extrabold shadow-[0_18px_50px_rgba(255,255,255,0.25)] hover:opacity-95 active:scale-[0.99] transition"
-                >
-                  {primaryBtnText}
-                </button>
-
-                {started ? (
-                  <button
-                    onClick={() => (qaDone ? router.push("/share") : router.push("/questions"))}
-                    className="w-full mt-3 rounded-2xl py-4 bg-black/20 border border-white/25 text-white font-extrabold hover:bg-black/25 active:scale-[0.99] transition"
-                  >
-                    {qaDone ? "مشاركة الآن 🔗" : "أكمل الأسئلة الآن ✍️"}
-                  </button>
-                ) : null}
-              </div>
-            </div>
-
-            {/* Card 3: Lookup / Status */}
+            {/* Card 3: Lookup / Status (بدون تغییر) */}
             <div className="rounded-3xl px-6 py-5 text-white shadow-[0_18px_50px_rgba(0,0,0,0.22)] border border-white/20 bg-gradient-to-br from-fuchsia-600/70 via-purple-600/55 to-amber-400/40 backdrop-blur-xl ring-1 ring-white/25 relative overflow-hidden text-right">
               <div className="pointer-events-none absolute -top-16 -left-16 h-40 w-40 rounded-full bg-white/15 blur-2xl" />
               <div className="pointer-events-none absolute -bottom-20 -right-20 h-48 w-48 rounded-full bg-black/10 blur-2xl" />
@@ -347,7 +343,7 @@ export default function HomePage() {
                     <input
                       value={lookupPhone}
                       onChange={(e) => setLookupPhone(e.target.value)}
-                      placeholder="أدخل رقم واتسابك"
+                      placeholder="968********"
                       dir="ltr"
                       inputMode="tel"
                       className="flex-1 rounded-2xl px-4 py-3 bg-white/12 border border-white/20 text-white placeholder:text-white/60 outline-none focus:ring-2 focus:ring-white/30"
@@ -431,7 +427,9 @@ export default function HomePage() {
                       </button>
 
                       <button
-                        onClick={() => (qaDone ? router.push("/share") : router.push("/questions"))}
+                        onClick={() =>
+                          qaDone ? router.push("/share") : router.push("/questions")
+                        }
                         className="rounded-2xl py-3 bg-black/20 border border-white/20 text-white font-extrabold hover:bg-black/25 active:scale-[0.99] transition"
                       >
                         {qaDone ? "مشاركة الآن" : "أكمل الأسئلة"}

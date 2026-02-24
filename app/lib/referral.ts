@@ -23,7 +23,7 @@ const SIG_SUFFIX = "__sig";
 const SECRET = "flyalrafah_v1_secret_2026";
 
 // share logic
-export const REQUIRED_SHARES = 3;
+export const REQUIRED_SHARES = 5;
 
 // cooldown (optional)
 const LAST_SHARE_TS_KEY = "flyalrafah_last_share_ts";
