@@ -106,16 +106,21 @@ export default function HomePage() {
         return;
       }
 
-      if (!data.ok) {
-        if (data.error === "not_found") {
-          setLookupError("هذا الرقم غير مسجل — اضغط (ابدأ الآن) للتسجيل");
-        } else if (data.error === "missing_phone") {
-          setLookupError("يرجى إدخال رقمك");
-        } else {
-          setLookupError("تعذر جلب البيانات");
-        }
-        return;
-      }
+    if (data.ok === false) {
+  const err = data.error;
+
+  if (err === "not_found") {
+    setLookupError("هذا الرقم غير مسجل — اضغط (ابدأ الآن) للتسجيل");
+  } else if (err === "missing_phone") {
+    setLookupError("يرجى إدخال رقمك");
+  } else if (err === "unauthorized") {
+    setLookupError("غير مصرح");
+  } else {
+    setLookupError("تعذر جلب البيانات");
+  }
+
+  return;
+}
 
       setPhone(p);
       setStarted(true);
