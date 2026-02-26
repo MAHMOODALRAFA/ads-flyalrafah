@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/app/lib/prisma";
 import { verifySessionToken } from "@/app/lib/session";
+import { Destination } from "@prisma/client";
 
 function noStore() {
   return { "Cache-Control": "no-store" };
@@ -31,7 +32,6 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({} as any));
 
-    const destination = body.destination ? String(body.destination) : null;
     const q1 = String(body.q1 || "").trim();
     const q2 = String(body.q2 || "").trim();
 
@@ -42,7 +42,18 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ Ensure user exists (by session userId)
+    // ✅ Validate destination enum
+    const rawDestination = String(body.destination || "").toUpperCase();
+
+    if (!Object.values(Destination).includes(rawDestination as Destination)) {
+      return NextResponse.json(
+        { ok: false, error: "invalid_destination" },
+        { status: 400, headers: noStore() }
+      );
+    }
+
+    const destination = rawDestination as Destination;
+
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
       select: { id: true },
@@ -55,7 +66,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ Because userId is NOT unique in schema, we can't use upsert(where: { userId })
+    // چون userId unique نیست → findFirst
     const existing = await prisma.questionAnswer.findFirst({
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
