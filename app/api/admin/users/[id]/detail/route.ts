@@ -5,8 +5,8 @@ import { isAdminAuthenticatedServer } from "@/lib/adminAuth";
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  req: Request,
-  context: { params: { id: string } }
+  request: Request,
+  { params }: { params: { id: string } }
 ) {
   try {
     const isAdmin = await isAdminAuthenticatedServer();
@@ -18,7 +18,7 @@ export async function GET(
       );
     }
 
-    const id = context.params.id;
+    const id = params.id;
 
     if (!id) {
       return NextResponse.json(
