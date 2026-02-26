@@ -6,7 +6,9 @@ export const dynamic = "force-dynamic";
 
 const noStore = { headers: { "Cache-Control": "no-store" } };
 
-export async function GET(_req: Request, { params }: { params: any }) {
+type Ctx = { params: { id: string } };
+
+export async function GET(_req: Request, { params }: Ctx) {
   try {
     const isAdmin = await isAdminAuthenticatedServer();
     if (!isAdmin) {
@@ -16,9 +18,7 @@ export async function GET(_req: Request, { params }: { params: any }) {
       );
     }
 
-    // ✅ مهم: params در بعضی نسخه‌ها Promise میاد
-    const p = await Promise.resolve(params);
-    const id = String(p?.id ?? "").trim();
+    const id = String(params.id ?? "").trim();
 
     if (!id) {
       return NextResponse.json(
@@ -39,15 +39,12 @@ export async function GET(_req: Request, { params }: { params: any }) {
         lastShareAt: true,
         createdAt: true,
         updatedAt: true,
-
         referralsGiven: {
           select: { id: true, referredPhone: true, createdAt: true },
           orderBy: { createdAt: "desc" },
           take: 50,
         },
-
         _count: { select: { referralsGiven: true } },
-
         answer: {
           select: { destination: true, q1: true, q2: true, updatedAt: true },
         },
@@ -64,6 +61,39 @@ export async function GET(_req: Request, { params }: { params: any }) {
     return NextResponse.json({ ok: true, user }, noStore);
   } catch (err) {
     console.error("ADMIN_USER_DETAIL_ERROR", err);
+    return NextResponse.json(
+      { ok: false, error: "server_error" },
+      { status: 500, ...noStore }
+    );
+  }
+}
+
+export async function DELETE(_req: Request, { params }: Ctx) {
+  try {
+    const isAdmin = await isAdminAuthenticatedServer();
+    if (!isAdmin) {
+      return NextResponse.json(
+        { ok: false, error: "unauthorized" },
+        { status: 401, ...noStore }
+      );
+    }
+
+    const id = String(params.id ?? "").trim();
+
+    if (!id) {
+      return NextResponse.json(
+        { ok: false, error: "missing_id" },
+        { status: 400, ...noStore }
+      );
+    }
+
+    await prisma.user.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({ ok: true }, noStore);
+  } catch (err) {
+    console.error("ADMIN_USER_DELETE_ERROR", err);
     return NextResponse.json(
       { ok: false, error: "server_error" },
       { status: 500, ...noStore }
