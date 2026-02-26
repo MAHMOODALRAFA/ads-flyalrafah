@@ -23,7 +23,10 @@ type MeResponse =
         points: number;
       };
     }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: "not_found" | "missing_phone" | "unauthorized" | "server_error";
+    };
 
 function normalizePhone(input: string) {
   let x = (input || "").trim();
