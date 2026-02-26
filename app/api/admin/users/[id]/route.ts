@@ -2,13 +2,15 @@
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
-import { isAdminAuthedServer } from "@/lib/adminAuth";
+import { isAdminAuthenticatedServer } from "@/lib/adminAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function DELETE(_: Request, ctx: { params: { id: string } }) {
   try {
-    if (!isAdminAuthedServer()) {
+    const isAdmin = await isAdminAuthenticatedServer();
+
+    if (!isAdmin) {
       return NextResponse.json(
         { ok: false, error: "unauthorized" },
         { status: 401, headers: { "Cache-Control": "no-store" } }
@@ -55,7 +57,7 @@ export async function DELETE(_: Request, ctx: { params: { id: string } }) {
       },
       { headers: { "Cache-Control": "no-store" } }
     );
-  } catch (err) {
+  } catch {
     return NextResponse.json(
       { ok: false, error: "server_error" },
       { status: 500, headers: { "Cache-Control": "no-store" } }
