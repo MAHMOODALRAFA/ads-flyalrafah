@@ -1,3 +1,4 @@
+// app/admin/panel/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -45,23 +46,16 @@ export default function AdminPanelPage() {
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
 
-  // debounce for search
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q.trim()), 350);
     return () => clearTimeout(t);
   }, [q]);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && localStorage.getItem("admin") !== "1") {
-      router.replace("/admin");
-      return;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     loadUsers(1, pagination.pageSize, "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // load when search changes
   useEffect(() => {
     loadUsers(1, pagination.pageSize, debouncedQ);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -72,11 +66,14 @@ export default function AdminPanelPage() {
   }
 
   async function loadUsers(page?: number, pageSize?: number, query?: string) {
+    if (loading) return;
+
     setError("");
     setLoading(true);
 
-    const nextPage = page ?? pagination.page;
-    const nextPageSize = pageSize ?? pagination.pageSize;
+    const nextPage = Math.max(1, Number(page ?? pagination.page) || 1);
+    const nextPageSizeRaw = Number(pageSize ?? pagination.pageSize) || 20;
+    const nextPageSize = Math.min(100, Math.max(1, nextPageSizeRaw));
     const nextQ = query ?? debouncedQ;
 
     try {
@@ -89,6 +86,12 @@ export default function AdminPanelPage() {
         cache: "no-store",
       });
 
+      if (res.status === 401) {
+        router.replace("/admin/login");
+        router.refresh();
+        return;
+      }
+
       const data = (await res.json().catch(() => null)) as UsersResponse | null;
 
       if (!res.ok || !data || !data.ok) {
@@ -99,7 +102,12 @@ export default function AdminPanelPage() {
       }
 
       setUsers(Array.isArray(data.users) ? data.users : []);
-      setPagination(data.pagination);
+      setPagination({
+        total: Number(data.pagination?.total ?? 0),
+        page: Math.max(1, Number(data.pagination?.page ?? 1)),
+        pageSize: Math.min(100, Math.max(1, Number(data.pagination?.pageSize ?? 20))),
+        totalPages: Math.max(1, Number(data.pagination?.totalPages ?? 1)),
+      });
     } catch {
       setError("خطأ في الاتصال بالخادم");
       setUsers([]);
@@ -117,8 +125,15 @@ export default function AdminPanelPage() {
       const res = await fetch("/api/admin/points", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        cache: "no-store",
         body: JSON.stringify({ userId, amount }),
       });
+
+      if (res.status === 401) {
+        router.replace("/admin/login");
+        router.refresh();
+        return;
+      }
 
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) {
@@ -147,8 +162,15 @@ export default function AdminPanelPage() {
       const res = await fetch("/api/admin/reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        cache: "no-store",
         body: JSON.stringify({ userId }),
       });
+
+      if (res.status === 401) {
+        router.replace("/admin/login");
+        router.refresh();
+        return;
+      }
 
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) {
@@ -161,6 +183,17 @@ export default function AdminPanelPage() {
       setError("خطأ في الاتصال بالخادم");
     } finally {
       setBusyId("");
+    }
+  }
+
+  async function logout() {
+    try {
+      await fetch("/api/admin/logout", { method: "POST", cache: "no-store" }).catch(
+        () => null
+      );
+    } finally {
+      router.replace("/admin/login");
+      router.refresh();
     }
   }
 
@@ -180,7 +213,6 @@ export default function AdminPanelPage() {
   return (
     <main dir="rtl" className="min-h-screen bg-zinc-50 p-6">
       <div className="mx-auto w-full max-w-5xl">
-        {/* Header */}
         <div className="flex items-start justify-between gap-3 mb-5">
           <div>
             <h1 className="text-2xl font-extrabold text-zinc-900">لوحة التحكم</h1>
@@ -196,16 +228,14 @@ export default function AdminPanelPage() {
           <div className="flex gap-2">
             <button
               onClick={() => loadUsers(pagination.page, pagination.pageSize, debouncedQ)}
-              className="h-11 rounded-2xl px-4 bg-white border border-zinc-200 text-zinc-800 font-bold hover:bg-zinc-100 transition"
+              disabled={loading}
+              className="h-11 rounded-2xl px-4 bg-white border border-zinc-200 text-zinc-800 font-bold hover:bg-zinc-100 transition disabled:opacity-60"
             >
               تحديث
             </button>
 
             <button
-              onClick={() => {
-                localStorage.removeItem("admin");
-                router.replace("/admin");
-              }}
+              onClick={logout}
               className="h-11 rounded-2xl px-4 bg-zinc-900 text-white font-bold hover:opacity-90 transition"
             >
               خروج
@@ -213,7 +243,6 @@ export default function AdminPanelPage() {
           </div>
         </div>
 
-        {/* Stats (page-level) */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
           <div className="rounded-2xl bg-white border border-zinc-200 p-4">
             <div className="text-xs text-zinc-500">مستخدمون في هذه الصفحة</div>
@@ -230,16 +259,13 @@ export default function AdminPanelPage() {
           </div>
 
           <div className="rounded-2xl bg-white border border-zinc-200 p-4">
-            <div className="text-xs text-zinc-500">
-              مجموع الانضمامات (هذه الصفحة)
-            </div>
+            <div className="text-xs text-zinc-500">مجموع الانضمامات (هذه الصفحة)</div>
             <div className="text-2xl font-extrabold text-zinc-900 mt-1">
               {stats.pageJoins}
             </div>
           </div>
         </div>
 
-        {/* Search + Paging */}
         <div className="rounded-2xl bg-white border border-zinc-200 p-4 mb-4">
           <div className="flex flex-col gap-3">
             <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
@@ -318,7 +344,6 @@ export default function AdminPanelPage() {
           </div>
         </div>
 
-        {/* List */}
         <div className="rounded-2xl bg-white border border-zinc-200 overflow-hidden">
           <div className="px-4 py-3 border-b border-zinc-200 bg-zinc-50 flex items-center justify-between">
             <div className="text-sm font-extrabold text-zinc-900">المستخدمون</div>
@@ -343,7 +368,6 @@ export default function AdminPanelPage() {
                     onClick={() => goUser(u.id)}
                     className="p-4 flex flex-col md:flex-row md:items-center gap-3 cursor-pointer hover:bg-zinc-50 transition"
                   >
-                    {/* Info */}
                     <div className="flex-1">
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
                         <div className="font-bold text-zinc-900" dir="ltr">
@@ -355,7 +379,8 @@ export default function AdminPanelPage() {
                         </div>
                         {u.name ? (
                           <div className="text-zinc-500">
-                            الاسم: <span className="font-bold text-zinc-900">{u.name}</span>
+                            الاسم:{" "}
+                            <span className="font-bold text-zinc-900">{u.name}</span>
                           </div>
                         ) : null}
                       </div>
@@ -386,7 +411,6 @@ export default function AdminPanelPage() {
                       </div>
                     </div>
 
-                    {/* Actions */}
                     <div
                       className="flex flex-wrap gap-2 justify-end"
                       onClick={(e) => e.stopPropagation()}

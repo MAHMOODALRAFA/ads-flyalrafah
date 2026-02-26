@@ -5,9 +5,10 @@ import { clearAdminCookie } from "@/lib/adminAuth";
 export const dynamic = "force-dynamic";
 
 export async function POST() {
-  clearAdminCookie();
+  await clearAdminCookie();
+
   return NextResponse.json(
     { ok: true },
-    { headers: { "Cache-Control": "no-store" } }
+    { status: 200, headers: { "Cache-Control": "no-store" } }
   );
 }

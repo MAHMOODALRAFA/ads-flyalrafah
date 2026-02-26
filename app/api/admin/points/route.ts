@@ -8,7 +8,6 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     const isAdmin = await isAdminAuthenticatedServer();
-
     if (!isAdmin) {
       return NextResponse.json(
         { ok: false, error: "unauthorized" },
@@ -16,10 +15,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json().catch(() => ({} as any));
-    const userId = String(body.userId || "").trim();
-    const amountRaw = Number(body.amount);
-
+    const body = await req.json().catch(() => ({} as { userId?: unknown; amount?: unknown }));
+    const userId = String(body?.userId ?? "").trim();
+    const amountRaw = Number(body?.amount);
     const amount = Number.isFinite(amountRaw) ? Math.trunc(amountRaw) : NaN;
 
     if (!userId || !Number.isFinite(amount) || amount === 0) {
@@ -29,7 +27,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ محدودیت منطقی برای جلوگیری از اشتباه انسانی
     if (Math.abs(amount) > 10000) {
       return NextResponse.json(
         { ok: false, error: "amount_too_large" },
@@ -37,36 +34,46 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ جلوگیری از منفی شدن امتیاز (اختیاری ولی پیشنهادی)
-    // اگر می‌خوای اجازه بدی منفی بشه، این بخش رو بردار.
-    const current = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { points: true },
+    const result = await prisma.$transaction(async (tx) => {
+      const current = await tx.user.findUnique({
+        where: { id: userId },
+        select: { points: true },
+      });
+
+      if (!current) {
+        return { kind: "not_found" as const };
+      }
+
+      if (amount < 0 && current.points + amount < 0) {
+        return { kind: "negative" as const, points: current.points };
+      }
+
+      const user = await tx.user.update({
+        where: { id: userId },
+        data: { points: { increment: amount } },
+        select: { id: true, phone: true, points: true },
+      });
+
+      return { kind: "ok" as const, user };
     });
 
-    if (!current) {
+    if (result.kind === "not_found") {
       return NextResponse.json(
         { ok: false, error: "not_found" },
         { status: 404, headers: { "Cache-Control": "no-store" } }
       );
     }
 
-    if (amount < 0 && current.points + amount < 0) {
+    if (result.kind === "negative") {
       return NextResponse.json(
         { ok: false, error: "points_cannot_be_negative" },
         { status: 400, headers: { "Cache-Control": "no-store" } }
       );
     }
 
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: { points: { increment: amount } },
-      select: { id: true, phone: true, points: true },
-    });
-
     return NextResponse.json(
-      { ok: true, user },
-      { headers: { "Cache-Control": "no-store" } }
+      { ok: true, user: result.user },
+      { status: 200, headers: { "Cache-Control": "no-store" } }
     );
   } catch {
     return NextResponse.json(

@@ -6,10 +6,10 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({} as any));
-    const password = String(body?.password ?? "");
+    const body = await req.json().catch(() => ({} as { password?: unknown }));
+    const password = String(body?.password ?? "").trim();
 
-    const expected = process.env.ADMIN_PASSWORD ?? "";
+    const expected = (process.env.ADMIN_PASSWORD ?? "").trim();
     if (!expected) {
       return NextResponse.json(
         { ok: false, error: "missing admin password" },
@@ -17,15 +17,15 @@ export async function POST(req: Request) {
       );
     }
 
-    if (password !== expected) {
+    if (!password || password !== expected) {
       return NextResponse.json(
         { ok: false, error: "invalid password" },
         { status: 401, headers: { "Cache-Control": "no-store" } }
       );
     }
 
-    // ✅ ست کردن کوکی ادمین (با نسخه جدید adminAuth.ts)
-    setAdminCookie();
+    // ✅ لازم است await شود
+    await setAdminCookie();
 
     return NextResponse.json(
       { ok: true },

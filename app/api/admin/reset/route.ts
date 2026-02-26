@@ -1,5 +1,4 @@
 // app/api/admin/reset/route.ts
-
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { isAdminAuthenticatedServer } from "@/lib/adminAuth";
@@ -9,7 +8,6 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     const isAdmin = await isAdminAuthenticatedServer();
-
     if (!isAdmin) {
       return NextResponse.json(
         { ok: false, error: "unauthorized" },
@@ -17,10 +15,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json().catch(() => ({} as any));
+    const body = await req
+      .json()
+      .catch(() => ({} as { userId?: unknown; wipeReferrals?: unknown }));
 
-    const userId = String(body.userId || "").trim();
-    const wipeReferrals = Boolean(body.wipeReferrals);
+    const userId = String(body?.userId ?? "").trim();
+    const wipeReferrals = Boolean(body?.wipeReferrals);
 
     if (!userId) {
       return NextResponse.json(
@@ -29,49 +29,60 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ بررسی وجود کاربر
-    const existing = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true },
+    const result = await prisma.$transaction(async (tx) => {
+      const existing = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true },
+      });
+
+      if (!existing) return { kind: "not_found" as const };
+
+      const updated = await tx.user.update({
+        where: { id: userId },
+        data: {
+          points: 0,
+          lastShareAt: null,
+        },
+        select: {
+          id: true,
+          phone: true,
+          points: true,
+          lastShareAt: true,
+          refCode: true,
+        },
+      });
+
+      let deleted = 0;
+      if (wipeReferrals) {
+        const r = await tx.referral.deleteMany({
+          where: { referrerId: userId },
+        });
+        deleted = r.count;
+      }
+
+      return {
+        kind: "ok" as const,
+        user: updated,
+        wipedReferrals: wipeReferrals,
+        deletedReferrals: deleted,
+      };
     });
 
-    if (!existing) {
+    if (result.kind === "not_found") {
       return NextResponse.json(
         { ok: false, error: "not_found" },
         { status: 404, headers: { "Cache-Control": "no-store" } }
       );
     }
 
-    // ✅ ریست امن
-    const updated = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        points: 0,
-        lastShareAt: null,
-      },
-      select: {
-        id: true,
-        phone: true,
-        points: true,
-        lastShareAt: true,
-        refCode: true,
-      },
-    });
-
-    // ✅ پاک‌کردن referrals (اختیاری)
-    if (wipeReferrals) {
-      await prisma.referral.deleteMany({
-        where: { referrerId: userId },
-      });
-    }
-
     return NextResponse.json(
       {
         ok: true,
-        user: updated,
-        wipedReferrals: wipeReferrals,
+        user: result.user,
+        wipedReferrals: result.wipedReferrals,
+        deletedReferrals: result.deletedReferrals,
       },
-      { headers: { "Cache-Control": "no-store" } }
+      { status: 200, headers: { "Cache-Control": "no-store" } }
     );
   } catch {
     return NextResponse.json(

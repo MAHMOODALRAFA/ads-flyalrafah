@@ -13,8 +13,11 @@ export default function AdminLoginPage() {
   const [err, setErr] = useState<string>("");
 
   async function submit() {
+    if (loading) return;
+
     setErr("");
-    if (!password.trim()) {
+    const pw = password.trim();
+    if (!pw) {
       setErr("اكتب كلمة المرور");
       return;
     }
@@ -25,7 +28,7 @@ export default function AdminLoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         cache: "no-store",
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password: pw }),
       });
 
       const json = await res.json().catch(() => null);
@@ -36,6 +39,7 @@ export default function AdminLoginPage() {
       }
 
       router.replace("/admin");
+      router.refresh();
     } catch {
       setErr("تعذر الاتصال بالخادم");
     } finally {
@@ -54,8 +58,13 @@ export default function AdminLoginPage() {
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full rounded-xl border border-zinc-200 px-4 py-3 outline-none focus:ring-2 focus:ring-purple-300"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+          disabled={loading}
+          className="w-full rounded-xl border border-zinc-200 px-4 py-3 outline-none focus:ring-2 focus:ring-purple-300 disabled:opacity-70"
           placeholder="••••••••"
+          autoComplete="current-password"
         />
 
         {err ? (
