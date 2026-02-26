@@ -8,7 +8,7 @@ const noStore = { headers: { "Cache-Control": "no-store" } };
 
 export async function GET(
   _req: Request,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const isAdmin = await isAdminAuthenticatedServer();
@@ -19,9 +19,10 @@ export async function GET(
       );
     }
 
-    const id = String(context.params.id ?? "").trim();
+    const { id } = await context.params;
+    const cleanId = String(id ?? "").trim();
 
-    if (!id) {
+    if (!cleanId) {
       return NextResponse.json(
         { ok: false, error: "missing_id" },
         { status: 400, ...noStore }
@@ -29,7 +30,7 @@ export async function GET(
     }
 
     const user = await prisma.user.findUnique({
-      where: { id },
+      where: { id: cleanId },
       include: {
         referralsGiven: true,
         answer: true,
