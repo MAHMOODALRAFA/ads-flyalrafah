@@ -1,8 +1,9 @@
+// app/unlocked/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getPhone, hasAnsweredQuestions, hasStarted } from "../lib/referral";
+import { hasAnsweredQuestions, REQUIRED_SHARES } from "../lib/referral";
 
 type CheckResponse =
   | {
@@ -14,9 +15,22 @@ type CheckResponse =
         refCode: string;
         points: number;
         joins: number;
+        sharesGiven?: number;
         lastShareAt: string | null;
         createdAt: string;
       };
+    }
+  | { ok: false; error: string };
+
+type ShareResponse =
+  | {
+      ok: true;
+      credited: boolean;
+      creditMode?: "first_share" | "normal" | "cooldown";
+      addedPoints?: number;
+      cooldownRemainingSec?: number;
+      waitMinutes?: number;
+      user?: { points?: number; sharesGiven?: number };
     }
   | { ok: false; error: string };
 
@@ -27,12 +41,19 @@ export default function UnlockedPage() {
   const [refCode, setRefCode] = useState("XXXX");
   const [points, setPoints] = useState(0);
   const [joins, setJoins] = useState(0);
+  const [sharesGiven, setSharesGiven] = useState(0);
 
   const [highlightEntry, setHighlightEntry] = useState(false);
+  const [sharing, setSharing] = useState(false);
+
+  const origin = useMemo(() => {
+    if (typeof window === "undefined") return "https://ads-flyalrafah.vercel.app";
+    return window.location.origin;
+  }, []);
 
   const referralLink = useMemo(() => {
-    return `https://flyalrafah.com/r/${refCode}`;
-  }, [refCode]);
+    return `${origin}/r/${refCode}`;
+  }, [origin, refCode]);
 
   const shareText = useMemo(() => {
     return `🎉 تم تسجيلك في قرعة FlyAlrafah الشهرية!
@@ -40,36 +61,22 @@ export default function UnlockedPage() {
 استخدم رابطّي للتسجيل:
 ${referralLink}
 
-✅ كل مشاركة = 1 نقطة
+✅ كل مشاركة = 1 نقطة (مع توقيت بسيط)
 👥 كل صديق يسجّل من رابطك = +10 نقاط
 
 ⭐ نقاط أكثر = فرصة أكبر للفوز`;
   }, [referralLink]);
 
   useEffect(() => {
-    // ✅ Guard: must have started + phone
-    if (!hasStarted()) {
-      router.replace("/start");
-      return;
-    }
-
-    const phone = getPhone();
-    if (!phone) {
-      router.replace("/start");
-      return;
-    }
-
-    // ✅ Must answer questions first
+    // ✅ local UX gate فقط
     if (!hasAnsweredQuestions()) {
       router.replace("/questions");
       return;
     }
 
-    // ✅ Special highlight if we came from demo progress finish
     const entryConfirmed = sessionStorage.getItem("entry_confirmed") === "1";
     if (entryConfirmed) {
       setHighlightEntry(true);
-      // cleanup so it won't show every time
       sessionStorage.removeItem("entry_confirmed");
     }
 
@@ -81,23 +88,28 @@ ${referralLink}
 
         const res = await fetch("/api/check", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone }),
           cache: "no-store",
+          headers: { "Content-Type": "application/json" },
         });
 
         const data = (await res.json().catch(() => null)) as CheckResponse | null;
-
         if (cancelled) return;
 
-        if (!res.ok || !data || !data.ok) {
+        if (!res.ok || !data || data.ok === false) {
           router.replace("/start");
+          return;
+        }
+
+        const shares = Number(data.user.sharesGiven ?? 0);
+        if (shares < REQUIRED_SHARES) {
+          router.replace("/share-progress");
           return;
         }
 
         setRefCode(data.user.refCode || "XXXX");
         setPoints(Number(data.user.points || 0));
         setJoins(Number(data.user.joins || 0));
+        setSharesGiven(shares);
       } catch {
         if (!cancelled) router.replace("/start");
       } finally {
@@ -126,17 +138,40 @@ ${referralLink}
     }
   }
 
-  function shareAgain() {
-    const url = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
-    window.open(url, "_blank");
+  async function shareAgain() {
+    if (sharing) return;
+
+    try {
+      setSharing(true);
+
+      // ✅ Try credit share (server decides cooldown)
+      const res = await fetch("/api/share", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const data = (await res.json().catch(() => null)) as ShareResponse | null;
+
+      if (res.ok && data && data.ok) {
+        if (typeof data.user?.points === "number") setPoints(data.user.points);
+        if (typeof data.user?.sharesGiven === "number") setSharesGiven(data.user.sharesGiven);
+      }
+
+      // ✅ open WhatsApp anyway
+      sessionStorage.setItem("wa_pending_share", "1");
+      window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, "_blank");
+    } catch {
+      sessionStorage.setItem("wa_pending_share", "1");
+      window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, "_blank");
+    } finally {
+      setSharing(false);
+    }
   }
 
   if (loading) {
     return (
-      <main
-        dir="rtl"
-        className="min-h-screen bg-zinc-50 flex items-center justify-center p-6"
-      >
+      <main dir="rtl" className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
         <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-6 text-center">
           <div className="text-lg font-bold text-zinc-900">جارٍ التحميل...</div>
           <div className="text-sm text-zinc-500 mt-2">نجهّز بياناتك</div>
@@ -146,13 +181,9 @@ ${referralLink}
   }
 
   return (
-    <main
-      dir="rtl"
-      className="min-h-screen bg-zinc-50 flex items-center justify-center p-6"
-    >
+    <main dir="rtl" className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
       <div className="w-full max-w-md">
         <div className="bg-white rounded-2xl shadow-lg p-6">
-          {/* Header */}
           <div className="flex justify-center mb-4">
             <div
               className={[
@@ -164,9 +195,7 @@ ${referralLink}
             </div>
           </div>
 
-          <h1 className="text-2xl font-bold text-center text-zinc-900">
-            تم تسجيلك في القرعة الشهرية ✅
-          </h1>
+          <h1 className="text-2xl font-bold text-center text-zinc-900">تم تسجيلك في القرعة الشهرية ✅</h1>
 
           <p className="text-center text-zinc-600 mt-2">
             {highlightEntry
@@ -174,7 +203,6 @@ ${referralLink}
               : "اسمك الآن ضمن قرعة FlyAlrafah الشهرية — وكلما زادت نقاطك زادت فرصتك 🎯"}
           </p>
 
-          {/* Badge Row */}
           <div className="mt-4 flex items-center justify-center gap-2">
             <span className="px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-xs font-bold border border-purple-100">
               🎟️ قرعة شهرية
@@ -184,12 +212,9 @@ ${referralLink}
             </span>
           </div>
 
-          {/* Code box */}
           <div className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4 text-center">
             <div className="text-xs text-zinc-500 mb-1">الكود الخاص بك</div>
-            <div className="text-2xl font-extrabold tracking-widest text-zinc-900">
-              {refCode}
-            </div>
+            <div className="text-2xl font-extrabold tracking-widest text-zinc-900">{refCode}</div>
 
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
@@ -207,8 +232,7 @@ ${referralLink}
             </div>
           </div>
 
-          {/* Stats */}
-          <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="mt-4 grid grid-cols-3 gap-3">
             <div className="rounded-2xl border border-zinc-200 p-4 text-center">
               <div className="text-xs text-zinc-500">نقاطك</div>
               <div className="text-2xl font-bold text-zinc-900">{points}</div>
@@ -216,13 +240,18 @@ ${referralLink}
             </div>
 
             <div className="rounded-2xl border border-zinc-200 p-4 text-center">
+              <div className="text-xs text-zinc-500">المشاركات</div>
+              <div className="text-2xl font-bold text-zinc-900">{sharesGiven}</div>
+              <div className="text-xs text-zinc-500 mt-1">المطلوب: {REQUIRED_SHARES}</div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-200 p-4 text-center">
               <div className="text-xs text-zinc-500">الأصدقاء المنضمّون</div>
               <div className="text-2xl font-bold text-zinc-900">{joins}</div>
-              <div className="text-xs text-zinc-500 mt-1">(+10 نقاط لكل صديق)</div>
+              <div className="text-xs text-zinc-500 mt-1">(+10 لكل صديق)</div>
             </div>
           </div>
 
-          {/* Rules box */}
           <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
             <div className="font-bold text-zinc-900 mb-2">📌 كيف تزيد فرصتك؟</div>
             <ul className="text-sm text-zinc-700 space-y-2">
@@ -232,12 +261,12 @@ ${referralLink}
             </ul>
           </div>
 
-          {/* CTA */}
           <button
             onClick={shareAgain}
-            className="w-full mt-5 rounded-2xl py-4 bg-green-500 text-white font-bold shadow-md hover:bg-green-600 transition"
+            disabled={sharing}
+            className="w-full mt-5 rounded-2xl py-4 bg-green-500 text-white font-bold shadow-md hover:bg-green-600 transition disabled:opacity-60"
           >
-            مشاركة الرابط مرة أخرى عبر واتساب 🔗
+            {sharing ? "جارٍ تسجيل المشاركة..." : "مشاركة الرابط مرة أخرى عبر واتساب 🔗"}
           </button>
 
           <button

@@ -1,36 +1,49 @@
 // app/lib/referral.ts
 "use client";
 
+/**
+ * ✅ IMPORTANT:
+ * Session (cookie) is the SOURCE OF TRUTH (server).
+ * This file is only for lightweight client-side guards / UX markers.
+ * We keep legacy keys for backward compatibility, but DO NOT invent server data here.
+ */
+
+// legacy-only (do not generate new values here)
 const REF_CODE_KEY = "flyalrafah_ref_code";
 const SHARE_COUNT_KEY = "flyalrafah_share_count";
+const DISCOUNT_KEY = "flyalrafah_discount_code";
+
+// current UX markers
 const PHONE_KEY = "flyalrafah_phone";
-
-/**
- * ✅ Discount concept removed from UI.
- * ⚠️ Kept keys/functions for backward compatibility (in case other pages still import them).
- */
-const DISCOUNT_KEY = "flyalrafah_discount_code"; // legacy
-
-// session
 const STARTED_AT_KEY = "flyalrafah_started_at";
-const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour (sliding)
 
-// anti-tamper (soft)
+// ✅ Align with server cookie lifetime (14 days)
+const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+
+// soft anti-tamper
 const DEVICE_ID_KEY = "flyalrafah_device_id";
 const SIG_SUFFIX = "__sig";
 const SECRET = "flyalrafah_v1_secret_2026";
 
-// share logic
-export const REQUIRED_SHARES = 5; // ✅ user wants 5 friends (demo stages)
+// share logic (server uses sharesGiven; local shareCount is legacy)
+export const REQUIRED_SHARES = 5;
 
-// cooldown (optional)
+// ✅ Align with server cooldown (60s)
 const LAST_SHARE_TS_KEY = "flyalrafah_last_share_ts";
-const SHARE_COOLDOWN_MS = 20_000;
+const SHARE_COOLDOWN_MS = 60_000;
 
-// questions (1-time per phone)
+// questions (per phone)
 const QA_DONE_PREFIX = "flyalrafah_questions_done__";
 
-/** -------------------- helpers -------------------- */
+// UX helpers for flow
+const WA_PENDING_SHARE_KEY = "wa_pending_share";
+const ENTRY_CONFIRMED_KEY = "entry_confirmed";
+
+/** -------------------- small helpers -------------------- */
+
+function safeWindow(): boolean {
+  return typeof window !== "undefined";
+}
 
 function randomCode(len = 5) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -49,8 +62,11 @@ function fnv1a32(str: string) {
   return (hash >>> 0).toString(36);
 }
 
+/** -------------------- device id + signing -------------------- */
+
 function getOrCreateDeviceId(): string {
-  if (typeof window === "undefined") return "server";
+  if (!safeWindow()) return "server";
+
   const saved = localStorage.getItem(DEVICE_ID_KEY);
   if (saved) return saved;
 
@@ -73,7 +89,7 @@ function sigKey(key: string) {
 }
 
 function readSigned(key: string, fallback: string): string {
-  if (typeof window === "undefined") return fallback;
+  if (!safeWindow()) return fallback;
 
   const raw = localStorage.getItem(key);
   if (!raw) return fallback;
@@ -93,13 +109,13 @@ function readSigned(key: string, fallback: string): string {
 }
 
 function writeSigned(key: string, value: string) {
-  if (typeof window === "undefined") return;
+  if (!safeWindow()) return;
   localStorage.setItem(key, value);
   localStorage.setItem(sigKey(key), sign(key, value));
 }
 
 function removeSigned(key: string) {
-  if (typeof window === "undefined") return;
+  if (!safeWindow()) return;
   localStorage.removeItem(key);
   localStorage.removeItem(sigKey(key));
 }
@@ -117,15 +133,33 @@ function touchSession() {
   writeSigned(STARTED_AT_KEY, String(nowMs()));
 }
 
-/** -------------------- phone + session -------------------- */
+/** -------------------- phone normalization (UI-only) -------------------- */
+
+export function normalizeDigits(input: string) {
+  const map: Record<string, string> = {
+    "٠": "0","١": "1","٢": "2","٣": "3","٤": "4","٥": "5","٦": "6","٧": "7","٨": "8","٩": "9",
+    "۰": "0","۱": "1","۲": "2","۳": "3","۴": "4","۵": "5","۶": "6","۷": "7","۸": "8","۹": "9",
+  };
+  return String(input || "").replace(/[٠-٩۰-۹]/g, (d) => map[d] ?? d);
+}
+
+/**
+ * Returns ONLY digits (no "+"). Good for your API usage.
+ */
+export function phoneDigitsOnly(input: string) {
+  return normalizeDigits(String(input || "")).replace(/[^\d]/g, "");
+}
+
+/** -------------------- phone + local started marker -------------------- */
 
 export function setPhone(phone: string) {
-  writeSigned(PHONE_KEY, phone);
+  const digits = phoneDigitsOnly(phone);
+  if (!digits) return;
+  writeSigned(PHONE_KEY, digits);
   touchSession();
 }
 
 export function getPhone(): string {
-  if (!hasStarted()) return "";
   const v = readSigned(PHONE_KEY, "");
   if (v === "__TAMPERED__") {
     removeSigned(PHONE_KEY);
@@ -134,6 +168,10 @@ export function getPhone(): string {
   return v;
 }
 
+/**
+ * ✅ hasStarted = local UX marker only.
+ * If local is cleared but cookie exists, /start should forward user using /api/check.
+ */
 export function hasStarted(): boolean {
   const phone = readSigned(PHONE_KEY, "");
   if (!phone || phone === "__TAMPERED__") {
@@ -156,6 +194,7 @@ export function hasStarted(): boolean {
   }
 
   if (isExpired(startedAt)) {
+    // ✅ reset local markers only
     resetAll();
     return false;
   }
@@ -173,6 +212,7 @@ function qaKeyForPhone(phone: string) {
 
 export function hasAnsweredQuestions(): boolean {
   if (!hasStarted()) return false;
+
   const phone = getPhone();
   if (!phone) return false;
 
@@ -187,10 +227,11 @@ export function hasAnsweredQuestions(): boolean {
 
 export function markQuestionsAnswered() {
   if (!hasStarted()) return;
+
   const phone = getPhone();
   if (!phone) return;
-  const key = qaKeyForPhone(phone);
-  writeSigned(key, "1");
+
+  writeSigned(qaKeyForPhone(phone), "1");
 }
 
 export function resetQuestionsAnswered() {
@@ -199,28 +240,30 @@ export function resetQuestionsAnswered() {
   removeSigned(qaKeyForPhone(phone));
 }
 
-/** -------------------- ref code -------------------- */
+/** -------------------- legacy ref code (read-only) -------------------- */
 
+/**
+ * ✅ IMPORTANT:
+ * In the new system, refCode must come from DB (/api/check).
+ * This is legacy-only and will NOT generate random ref codes.
+ */
 export function getRefCode(): string {
-  if (typeof window === "undefined") return "XXXX";
+  if (!safeWindow()) return "XXXX";
 
   const saved = readSigned(REF_CODE_KEY, "");
   if (saved === "__TAMPERED__") {
     removeSigned(REF_CODE_KEY);
     return "XXXX";
   }
-  if (saved) return saved;
 
-  const code = randomCode(6);
-  writeSigned(REF_CODE_KEY, code);
-  return code;
+  return saved || "XXXX";
 }
 
 export function resetRefCode() {
   removeSigned(REF_CODE_KEY);
 }
 
-/** -------------------- local share count (legacy/demo) -------------------- */
+/** -------------------- legacy local share count (demo-only) -------------------- */
 
 export function getShareCount(): number {
   const v = readSigned(SHARE_COUNT_KEY, "0");
@@ -239,7 +282,7 @@ export function setShareCount(count: number): number {
 }
 
 export function canIncreaseShareNow(): boolean {
-  if (typeof window === "undefined") return true;
+  if (!safeWindow()) return true;
 
   const v = readSigned(LAST_SHARE_TS_KEY, "0");
   if (v === "__TAMPERED__") {
@@ -256,7 +299,6 @@ export function markShareNow() {
 }
 
 export function increaseShareCount(): number {
-  // optional cooldown
   if (!canIncreaseShareNow()) return getShareCount();
 
   const next = getShareCount() + 1;
@@ -270,10 +312,11 @@ export function resetShareCount() {
 }
 
 export function isUnlocked(): boolean {
+  // legacy only (server uses sharesGiven)
   return getShareCount() >= REQUIRED_SHARES;
 }
 
-/** -------------------- legacy discount exports (no longer used) -------------------- */
+/** -------------------- legacy discount exports (kept) -------------------- */
 
 export function makeCoupon(code: string) {
   const safe = (code || "XXXX").toUpperCase().slice(0, 6);
@@ -285,8 +328,7 @@ function makeDiscountCode() {
 }
 
 export function getOrCreateDiscountCode(): string {
-  // legacy only
-  if (typeof window === "undefined") return "FLY-XXXXXX";
+  if (!safeWindow()) return "FLY-XXXXXX";
 
   const saved = readSigned(DISCOUNT_KEY, "");
   if (saved === "__TAMPERED__") {
@@ -305,26 +347,53 @@ export function resetDiscountCode() {
 }
 
 export function computeDiscountAmount(_shareCount: number): number {
-  // legacy only (discount removed)
   return 0;
 }
 
-/** -------------------- optional: verify all or reset -------------------- */
+/** -------------------- UX helpers (for your flow pages) -------------------- */
+
+export function setPendingShare() {
+  if (!safeWindow()) return;
+  sessionStorage.setItem(WA_PENDING_SHARE_KEY, "1");
+}
+
+export function consumePendingShare(): boolean {
+  if (!safeWindow()) return false;
+  const pending = sessionStorage.getItem(WA_PENDING_SHARE_KEY) === "1";
+  if (pending) sessionStorage.removeItem(WA_PENDING_SHARE_KEY);
+  return pending;
+}
+
+export function setEntryConfirmed() {
+  if (!safeWindow()) return;
+  sessionStorage.setItem(ENTRY_CONFIRMED_KEY, "1");
+}
+
+export function consumeEntryConfirmed(): boolean {
+  if (!safeWindow()) return false;
+  const v = sessionStorage.getItem(ENTRY_CONFIRMED_KEY) === "1";
+  if (v) sessionStorage.removeItem(ENTRY_CONFIRMED_KEY);
+  return v;
+}
+
+export function buildWhatsappShareUrl(text: string) {
+  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+}
+
+/** -------------------- optional: verify legacy bits or reset -------------------- */
 
 export function verifyReferralOrReset(): {
   tampered: boolean;
   refCode: string;
   shareCount: number;
 } {
-  if (typeof window === "undefined")
-    return { tampered: false, refCode: "", shareCount: 0 };
+  if (!safeWindow()) return { tampered: false, refCode: "", shareCount: 0 };
 
   const rc = readSigned(REF_CODE_KEY, "");
   const sc = readSigned(SHARE_COUNT_KEY, "0");
 
   const tampered = rc === "__TAMPERED__" || sc === "__TAMPERED__";
   if (tampered) {
-    // reset only referral bits
     resetRefCode();
     resetShareCount();
     resetDiscountCode();
@@ -334,9 +403,12 @@ export function verifyReferralOrReset(): {
   return { tampered, refCode: getRefCode(), shareCount: getShareCount() };
 }
 
-/** -------------------- full reset -------------------- */
+/** -------------------- full reset (local only) -------------------- */
 
 export function resetAll() {
+  // ✅ capture phone BEFORE removing it
+  const phone = readSigned(PHONE_KEY, "");
+
   removeSigned(PHONE_KEY);
   removeSigned(STARTED_AT_KEY);
 
@@ -345,8 +417,6 @@ export function resetAll() {
   removeSigned(DISCOUNT_KEY);
   removeSigned(LAST_SHARE_TS_KEY);
 
-  // questions flag
-  const phone = readSigned(PHONE_KEY, "");
   if (phone && phone !== "__TAMPERED__") {
     removeSigned(qaKeyForPhone(phone));
   }

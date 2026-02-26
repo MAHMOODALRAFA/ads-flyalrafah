@@ -1,13 +1,9 @@
+// app/share-progress/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  REQUIRED_SHARES,
-  getPhone,
-  hasAnsweredQuestions,
-  hasStarted,
-} from "../lib/referral";
+import { REQUIRED_SHARES, hasAnsweredQuestions } from "../lib/referral";
 
 type CheckResponse =
   | {
@@ -19,12 +15,14 @@ type CheckResponse =
         refCode: string;
         points: number;
         joins: number;
+        sharesGiven?: number;
         lastShareAt: string | null;
         createdAt: string;
       };
-      shareCooldown?: {
+      shareCooldown: {
         isBlocked: boolean;
-        waitMinutes: number;
+        cooldownRemainingSec?: number;
+        waitMinutes?: number;
         lastShareAt: string | null;
       };
     }
@@ -37,14 +35,9 @@ type DemoStep = {
   done: boolean;
 };
 
-// ✅ IG key per phone (fix: new number won't inherit old IG)
-const IG_KEY = (phone: string) => `flyalrafah_instagram_done_${phone || "unknown"}`;
-const LEGACY_IG_KEY = "flyalrafah_instagram_done";
-
-// ✅ total 1 minute split
-const PHASE1_MS = 20_000; // share+wa
-const PHASE2_MS = 20_000; // friends
-const PHASE3_MS = 20_000; // IG verify
+const PHASE1_MS = 20_000;
+const PHASE2_MS = 20_000;
+const PHASE3_MS = 20_000;
 const TOTAL_MS = PHASE1_MS + PHASE2_MS + PHASE3_MS;
 
 export default function ShareProgressPage() {
@@ -56,9 +49,16 @@ export default function ShareProgressPage() {
   const [joins, setJoins] = useState<number>(0);
   const [sharesCount, setSharesCount] = useState<number>(0);
 
-  const [igDone, setIgDone] = useState(false);
+  const [cooldownBlocked, setCooldownBlocked] = useState(false);
+  const [cooldownRemainingSec, setCooldownRemainingSec] = useState<number>(0);
 
-  // unified verifying bar
+  const [igDone, setIgDone] = useState(false);
+  const [phone, setPhone] = useState<string>("");
+
+  const IG_KEY = useMemo(() => {
+    return `flyalrafah_instagram_done__${phone || "unknown"}`;
+  }, [phone]);
+
   const [verifying, setVerifying] = useState(false);
   const [verifyText, setVerifyText] = useState("");
   const [verifyPct, setVerifyPct] = useState(0);
@@ -75,7 +75,6 @@ export default function ShareProgressPage() {
     { id: "done", title: "تم تفعيل دخولك للقرعة الشهرية", subtitle: "جارٍ تجهيز صفحتك الأخيرة...", done: false },
   ]);
 
-  const phoneRef = useRef<string>("");
   const timersRef = useRef<number[]>([]);
   const intervalRef = useRef<number | null>(null);
 
@@ -93,65 +92,76 @@ export default function ShareProgressPage() {
   function markDone(ids: DemoStep["id"][], subtitle?: string) {
     setSteps((prev) =>
       prev.map((s) =>
-        ids.includes(s.id)
-          ? { ...s, done: true, subtitle: subtitle ?? s.subtitle }
-          : s
+        ids.includes(s.id) ? { ...s, done: true, subtitle: subtitle ?? s.subtitle } : s
       )
     );
   }
 
-  async function fetchCheck(phone: string) {
+  async function fetchCheck() {
     const res = await fetch("/api/check", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone }),
       cache: "no-store",
+      headers: { "Content-Type": "application/json" },
     });
 
     const data = (await res.json().catch(() => null)) as CheckResponse | null;
-    if (!res.ok || !data || !data.ok) throw new Error("bad_response");
+
+    if (!res.ok || !data) throw new Error("bad_response");
+
+    if (data.ok === false) {
+      if (data.error === "unauthorized" || data.error === "invalid_session") {
+        router.replace("/start");
+        throw new Error("session");
+      }
+      throw new Error(data.error);
+    }
 
     const p = Number(data.user.points || 0);
     const j = Number(data.user.joins || 0);
-    const computedShares = Math.max(0, p - j * 10);
+    const s = typeof data.user.sharesGiven === "number" ? Number(data.user.sharesGiven) : 0;
 
+    setPhone(data.user.phone || "");
     setPoints(p);
     setJoins(j);
-    setSharesCount(computedShares);
+    setSharesCount(Math.max(0, s));
 
-    return { points: p, joins: j, shares: computedShares };
+    const blocked = Boolean(data.shareCooldown?.isBlocked);
+    setCooldownBlocked(blocked);
+
+    const sec =
+      data.shareCooldown?.cooldownRemainingSec ??
+      (typeof data.shareCooldown?.waitMinutes === "number" ? data.shareCooldown.waitMinutes * 60 : 0);
+
+    setCooldownRemainingSec(Math.max(0, Number(sec || 0)));
+
+    return { points: p, joins: j, shares: Math.max(0, s), blocked, sec: Math.max(0, Number(sec || 0)) };
   }
 
-  // ✅ Guards + init (and IG key fix)
+  // ✅ Initial load (session-first)
   useEffect(() => {
-    if (!hasStarted()) return router.replace("/start");
-
-    const phone = getPhone();
-    if (!phone) return router.replace("/start");
-
-    if (!hasAnsweredQuestions()) return router.replace("/questions");
-
-    phoneRef.current = phone;
-
-    // purge legacy key always (so it never affects new numbers)
-    if (localStorage.getItem(LEGACY_IG_KEY) != null) localStorage.removeItem(LEGACY_IG_KEY);
-
-    const ig = localStorage.getItem(IG_KEY(phone)) === "1";
-    setIgDone(ig);
-
     let cancelled = false;
 
     (async () => {
       try {
         setLoading(true);
-        const stats = await fetchCheck(phone);
+
+        const stats = await fetchCheck();
         if (cancelled) return;
+
+        // ✅ questions gate (local UX)
+        if (!hasAnsweredQuestions()) {
+          router.replace("/questions");
+          return;
+        }
+
+        // IG (per phone)
+        const ig = phone ? localStorage.getItem(`flyalrafah_instagram_done__${phone}`) === "1" : false;
+        setIgDone(ig);
 
         markDone(["q"], "تم الحفظ بنجاح ✅");
 
         if (stats.shares > 0) markDone(["share", "wa"], "تم التحقق بنجاح ✅");
         if (stats.shares >= REQUIRED_SHARES) markDone(["friends"], "تم التحقق بنجاح ✅");
-
         if (ig) markDone(["ig"], "تم التفعيل ✅");
       } catch {
         if (!cancelled) router.replace("/start");
@@ -167,12 +177,18 @@ export default function ShareProgressPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
+  // Keep igDone synced when phone becomes available
+  useEffect(() => {
+    if (!phone) return;
+    setIgDone(localStorage.getItem(IG_KEY) === "1");
+  }, [phone, IG_KEY]);
+
   const sharePartDone = useMemo(() => {
     const ids: DemoStep["id"][] = ["q", "share", "wa", "friends"];
     return steps.filter((s) => ids.includes(s.id)).every((s) => s.done);
   }, [steps]);
 
-  // ✅ After coming from /share: run 40s verification (phase1+phase2) then stop & wait IG
+  // ✅ verification animation after WA
   useEffect(() => {
     if (loading) return;
 
@@ -194,15 +210,29 @@ export default function ShareProgressPage() {
     }, 250);
 
     pushTimer(
-      window.setTimeout(() => {
+      window.setTimeout(async () => {
+        try {
+          await fetchCheck();
+        } catch {}
         markDone(["share", "wa"], "تم التحقق بنجاح ✅");
         setVerifyText("جارٍ التحقق من الإرسال للأصدقاء...");
       }, PHASE1_MS)
     );
 
     pushTimer(
-      window.setTimeout(() => {
-        markDone(["friends"], "تم التحقق بنجاح ✅");
+      window.setTimeout(async () => {
+        let latestShares = 0;
+        try {
+          const stats = await fetchCheck();
+          latestShares = stats.shares;
+        } catch {}
+
+        if (latestShares >= REQUIRED_SHARES) {
+          markDone(["friends"], "تم التحقق بنجاح ✅");
+        } else {
+          markDone(["friends"], "تحققنا — أكمل إرسال الرابط حتى يصل العدد المطلوب ✅");
+        }
+
         setVerifyText("بانتظار شرط إنستغرام لإكمال التفعيل...");
         setVerifyPct(Math.round(((PHASE1_MS + PHASE2_MS) / TOTAL_MS) * 100));
         setVerifying(false);
@@ -213,9 +243,6 @@ export default function ShareProgressPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
-  // ✅ IMPORTANT FIX:
-  // When clicking IG: do NOT set igDone immediately.
-  // Run 20s verification first, then set igDone + redirect.
   function handleInstagramFollow() {
     if (igVerifying || finalizing) return;
 
@@ -226,11 +253,8 @@ export default function ShareProgressPage() {
     setVerifyText("جارٍ التحقق من شرط إنستغرام...");
     setVerifyPct(Math.round(((PHASE1_MS + PHASE2_MS) / TOTAL_MS) * 100));
 
-    // show IG step as "verifying"
     setSteps((prev) =>
-      prev.map((s) =>
-        s.id === "ig" ? { ...s, done: false, subtitle: "جارٍ التحقق... ⏳ (20 ثانية)" } : s
-      )
+      prev.map((s) => (s.id === "ig" ? { ...s, done: false, subtitle: "جارٍ التحقق... ⏳" } : s))
     );
 
     clearAllTimers();
@@ -245,8 +269,8 @@ export default function ShareProgressPage() {
 
     pushTimer(
       window.setTimeout(() => {
-        const phone = phoneRef.current || getPhone() || "";
-        localStorage.setItem(IG_KEY(phone), "1");
+        // ✅ per-user key
+        localStorage.setItem(IG_KEY, "1");
 
         markDone(["ig"], "تم التفعيل ✅");
         setIgDone(true);
@@ -259,6 +283,7 @@ export default function ShareProgressPage() {
 
         pushTimer(
           window.setTimeout(() => {
+            sessionStorage.setItem("entry_confirmed", "1");
             markDone(["done"], "تم التفعيل ✅");
             router.replace("/unlocked");
           }, 900)
@@ -267,7 +292,12 @@ export default function ShareProgressPage() {
     );
   }
 
-  // ✅ If sharePartDone & igDone already true (previous session), go unlocked (quick)
+  function handleShareAgain() {
+    if (verifying || igVerifying || finalizing) return;
+    sessionStorage.setItem("wa_pending_share", "1");
+    router.push("/share");
+  }
+
   useEffect(() => {
     if (loading) return;
     if (!sharePartDone) return;
@@ -277,6 +307,7 @@ export default function ShareProgressPage() {
     setFinalizing(true);
     pushTimer(
       window.setTimeout(() => {
+        sessionStorage.setItem("entry_confirmed", "1");
         markDone(["done"], "تم التفعيل ✅");
         router.replace("/unlocked");
       }, 700)
@@ -304,10 +335,11 @@ export default function ShareProgressPage() {
     );
   }
 
+  const needMoreShares = sharesCount < REQUIRED_SHARES;
+
   return (
     <main dir="rtl" className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
       <div className="w-full max-w-md">
-        {/* Step indicator (like other pages) */}
         <div className="flex justify-center mb-4">
           <div className="text-sm text-zinc-500">
             <span className="inline-block h-2 w-10 rounded-full bg-purple-600 align-middle ml-2" />
@@ -324,14 +356,9 @@ export default function ShareProgressPage() {
             </div>
           </div>
 
-          <h1 className="text-2xl font-extrabold text-center text-zinc-900">
-            مراحل التفعيل
-          </h1>
-          <p className="text-center text-sm text-zinc-500 mt-2 mb-5">
-            أكمل الخطوات لتفعيل دخولك للقرعة
-          </p>
+          <h1 className="text-2xl font-extrabold text-center text-zinc-900">مراحل التفعيل</h1>
+          <p className="text-center text-sm text-zinc-500 mt-2 mb-5">أكمل الخطوات لتفعيل دخولك للقرعة</p>
 
-          {/* Overall progress (graphic bar) */}
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4 mb-4">
             <div className="flex items-center justify-between">
               <div className="text-xs text-zinc-500">التقدّم</div>
@@ -345,13 +372,9 @@ export default function ShareProgressPage() {
             </div>
           </div>
 
-          {/* ✅ 1-minute verification bar (graphic) */}
           {verifying && (
             <div className="mb-4 rounded-2xl border border-purple-200 bg-purple-50 px-4 py-4">
               <div className="font-extrabold text-zinc-900">{verifyText}</div>
-              <div className="text-xs text-zinc-600 mt-1">
-                قد يستغرق التحقق حوالي دقيقة (مقسّمة على مراحل)
-              </div>
 
               <div className="mt-3 flex items-center justify-between text-xs text-zinc-600">
                 <span>التقدّم</span>
@@ -367,13 +390,13 @@ export default function ShareProgressPage() {
             </div>
           )}
 
-          {/* Steps */}
           <div className="space-y-3">
             {steps.map((s) => (
               <div
                 key={s.id}
-                className={`rounded-2xl border px-4 py-3 flex items-start justify-between gap-3
-                  ${s.done ? "border-emerald-200 bg-emerald-50" : "border-zinc-200 bg-white"}`}
+                className={`rounded-2xl border px-4 py-3 flex items-start justify-between gap-3 ${
+                  s.done ? "border-emerald-200 bg-emerald-50" : "border-zinc-200 bg-white"
+                }`}
               >
                 <div className="min-w-0 text-right">
                   <div className="font-extrabold text-zinc-900">{s.title}</div>
@@ -395,13 +418,44 @@ export default function ShareProgressPage() {
             ))}
           </div>
 
-          {/* IG block: only after share part done and IG not done */}
+          {needMoreShares && (
+            <div className="mt-4 rounded-2xl border border-zinc-200 bg-white px-4 py-4">
+              <div className="font-extrabold text-zinc-900">لم تكتمل المشاركات بعد</div>
+
+              <div className="text-xs text-zinc-600 mt-1">
+                المتبقي:{" "}
+                <span className="font-bold text-zinc-900">{REQUIRED_SHARES - sharesCount}</span>{" "}
+                مشاركات
+                {cooldownBlocked && cooldownRemainingSec > 0 ? (
+                  <>
+                    {" — "}
+                    انتظر{" "}
+                    <span className="font-bold text-zinc-900">{cooldownRemainingSec}</span>{" "}
+                    ثانية بسبب التوقيت
+                  </>
+                ) : null}
+              </div>
+
+              <button
+                onClick={handleShareAgain}
+                disabled={verifying || igVerifying || finalizing}
+                className="w-full mt-3 py-3 rounded-2xl bg-zinc-900 text-white font-extrabold shadow-md disabled:opacity-60"
+              >
+                مشاركة الرابط مرة أخرى
+              </button>
+
+              {cooldownBlocked && cooldownRemainingSec > 0 && (
+                <div className="text-xs text-zinc-500 mt-2">
+                  تلميح: انتظر انتهاء العدّاد ثم اضغط مشاركة مرة أخرى.
+                </div>
+              )}
+            </div>
+          )}
+
           {sharePartDone && !igDone && (
             <div className="mt-4 rounded-2xl border border-pink-200 bg-pink-50 px-4 py-4">
               <div className="font-extrabold text-zinc-900">شرط إنستغرام 📲</div>
-              <div className="text-xs text-zinc-600 mt-1">
-                اضغط للمتابعة، ثم سيتم التحقق خلال 20 ثانية
-              </div>
+              <div className="text-xs text-zinc-600 mt-1">اضغط للمتابعة، ثم سيتم التحقق خلال 20 ثانية</div>
 
               <button
                 onClick={handleInstagramFollow}
@@ -413,7 +467,6 @@ export default function ShareProgressPage() {
             </div>
           )}
 
-          {/* Finalizing */}
           {finalizing && (
             <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
               <div className="font-extrabold text-zinc-900">جارٍ إكمال التفعيل...</div>
@@ -424,11 +477,10 @@ export default function ShareProgressPage() {
             </div>
           )}
 
-          {/* Footer stats */}
           <div className="mt-4 text-xs text-zinc-500 text-center">
             نقاطك: <span className="font-bold text-zinc-900">{points}</span>
             {" • "}
-            المشاركات المحسوبة: <span className="font-bold text-zinc-900">{sharesCount}</span>
+            المشاركات: <span className="font-bold text-zinc-900">{sharesCount}</span>
             {" • "}
             المطلوب: <span className="font-bold text-zinc-900">{REQUIRED_SHARES}</span>
           </div>

@@ -8,28 +8,76 @@ datasource db {
   directUrl = env("DATABASE_DIRECT_URL")
 }
 
+enum Destination {
+  SHIRAZ
+  TEHRAN
+  CHABAHAR
+  KISH
+  BANDAR_ABBAS
+  AHWAZ
+  MASHHAD
+}
+
 model User {
-  id        String   @id @default(cuid())
-  phone     String   @unique
-  name      String?
-  destination String?
-  refCode   String   @unique
-  points    Int      @default(0)
+  id          String       @id @default(cuid())
+  phone       String       @unique
+  name        String?
+  destination Destination?
+  refCode     String       @unique
+  points      Int          @default(0)
+
+  // ✅ شمارنده شیرها
+  sharesGiven Int @default(0)
 
   lastShareAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // ✅ Relations
   referralsGiven Referral[] @relation("ReferralsGiven")
+
+  // ✅ 🔥 این خطی که کم داشتی
+  referralClaimed Referral? @relation("ReferredUser")
+
+  answers QuestionAnswer[]
+
+  @@index([createdAt])
+  @@index([points])
+  @@index([sharesGiven])
 }
 
 model Referral {
-  id            String   @id @default(cuid())
-  referrerId    String
-  referrer      User     @relation("ReferralsGiven", fields: [referrerId], references: [id])
+  id String @id @default(cuid())
 
-  referredPhone String   @unique
+  referrerId String
+  referrer   User   @relation("ReferralsGiven", fields: [referrerId], references: [id], onDelete: Cascade)
 
-  createdAt     DateTime @default(now())
+  referredPhone String
+
+  referredUserId String? @unique
+  referredUser   User?   @relation("ReferredUser", fields: [referredUserId], references: [id], onDelete: SetNull)
+
+  campaign String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([referredPhone, campaign])
+  @@index([referrerId, createdAt])
+  @@index([createdAt])
+}
+
+model QuestionAnswer {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  destination Destination
+  q1          String
+  q2          String
+
+  createdAt DateTime @default(now())
+
+  @@index([destination, createdAt])
+  @@index([userId, createdAt])
 }

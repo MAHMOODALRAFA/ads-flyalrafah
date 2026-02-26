@@ -1,47 +1,77 @@
 // app/api/admin/users/route.ts
+
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
+import { isAdminAuthedServer } from "@/lib/adminAuth";
 
-function isAdmin(req: Request) {
-  const token = req.headers.get("x-admin-token") || "";
-  const pass = (process.env.ADMIN_PASS || "").trim();
-  if (!pass) return false; // env باید ست شده باشد
-  return token === pass;
-}
+export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  try {
-    if (!isAdmin(req)) {
-      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-    }
-
-    const users = await prisma.user.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 300,
-      select: {
-        id: true,
-        phone: true,
-        points: true,
-        refCode: true,
-        createdAt: true,
-        lastShareAt: true,
-        _count: { select: { referralsGiven: true } }, // joins
-      },
-    });
-
-    return NextResponse.json({
-      ok: true,
-      users: users.map((u) => ({
-        id: u.id,
-        phone: u.phone,
-        points: u.points,
-        joins: u._count.referralsGiven,
-        refCode: u.refCode,
-        createdAt: u.createdAt.toISOString(),
-        lastShareAt: u.lastShareAt ? u.lastShareAt.toISOString() : null,
-      })),
-    });
-  } catch {
-    return NextResponse.json({ ok: false, error: "server_error" }, { status: 500 });
+  if (!isAdminAuthedServer()) {
+    return NextResponse.json(
+      { ok: false, error: "unauthorized" },
+      { status: 401, headers: { "Cache-Control": "no-store" } }
+    );
   }
+
+  const url = new URL(req.url);
+
+  const q = (url.searchParams.get("q") || "").trim();
+
+  const page = Number(url.searchParams.get("page") || 1);
+  const pageSize = Number(url.searchParams.get("pageSize") || 20);
+
+  const where =
+    q.length >= 2
+      ? {
+          OR: [
+            { phone: { contains: q } },
+            { refCode: { contains: q, mode: "insensitive" as const } },
+            { name: { contains: q, mode: "insensitive" as const } },
+          ],
+        }
+      : undefined;
+
+  // ✅ total count (برای pagination)
+  const total = await prisma.user.count({ where });
+
+  const users = await prisma.user.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+
+    select: {
+      id: true,
+      phone: true,
+      name: true,
+      destination: true,
+      refCode: true,
+      points: true,
+      lastShareAt: true,
+      createdAt: true,
+      updatedAt: true,
+
+      // ✅ COUNT referrals (خیلی مهم)
+      _count: {
+        select: {
+          referralsGiven: true,
+        },
+      },
+    },
+  });
+
+  return NextResponse.json(
+    {
+      ok: true,
+      users,
+      pagination: {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }

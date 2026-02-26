@@ -3,53 +3,103 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type UserRow = {
+type ApiUser = {
   id: string;
   phone: string;
-  points: number;
-  joins: number; // computed from referralsGiven count
+  name: string | null;
+  destination: string | null;
   refCode: string;
+  points: number;
   lastShareAt: string | null;
   createdAt: string;
+  updatedAt: string;
+  _count?: { referralsGiven?: number };
+};
+
+type Pagination = {
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 };
 
 type UsersResponse =
-  | { ok: true; users: UserRow[] }
+  | { ok: true; users: ApiUser[]; pagination: Pagination }
   | { ok: false; error?: string };
 
 export default function AdminPanelPage() {
   const router = useRouter();
 
-  const [users, setUsers] = useState<UserRow[]>([]);
+  const [users, setUsers] = useState<ApiUser[]>([]);
+  const [pagination, setPagination] = useState<Pagination>({
+    total: 0,
+    page: 1,
+    pageSize: 20,
+    totalPages: 1,
+  });
+
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string>("");
   const [error, setError] = useState<string>("");
 
   const [q, setQ] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
+
+  // debounce for search
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(q.trim()), 350);
+    return () => clearTimeout(t);
+  }, [q]);
 
   useEffect(() => {
     if (typeof window !== "undefined" && localStorage.getItem("admin") !== "1") {
       router.replace("/admin");
       return;
     }
-    loadUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    loadUsers(1, pagination.pageSize, "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function loadUsers() {
+  // load when search changes
+  useEffect(() => {
+    loadUsers(1, pagination.pageSize, debouncedQ);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQ]);
+
+  function goUser(id: string) {
+    router.push(`/admin/user/${id}`);
+  }
+
+  async function loadUsers(page?: number, pageSize?: number, query?: string) {
     setError("");
     setLoading(true);
+
+    const nextPage = page ?? pagination.page;
+    const nextPageSize = pageSize ?? pagination.pageSize;
+    const nextQ = query ?? debouncedQ;
+
     try {
-      const res = await fetch("/api/admin/users", { cache: "no-store" });
+      const params = new URLSearchParams();
+      if (nextQ) params.set("q", nextQ);
+      params.set("page", String(nextPage));
+      params.set("pageSize", String(nextPageSize));
+
+      const res = await fetch(`/api/admin/users?${params.toString()}`, {
+        cache: "no-store",
+      });
+
       const data = (await res.json().catch(() => null)) as UsersResponse | null;
 
       if (!res.ok || !data || !data.ok) {
         setError("تعذر تحميل قائمة المستخدمين");
         setUsers([]);
+        setPagination((p) => ({ ...p, total: 0, totalPages: 1, page: 1 }));
         return;
       }
 
       setUsers(Array.isArray(data.users) ? data.users : []);
+      setPagination(data.pagination);
     } catch {
       setError("خطأ في الاتصال بالخادم");
       setUsers([]);
@@ -76,7 +126,7 @@ export default function AdminPanelPage() {
         return;
       }
 
-      await loadUsers();
+      await loadUsers(pagination.page, pagination.pageSize, debouncedQ);
     } catch {
       setError("خطأ في الاتصال بالخادم");
     } finally {
@@ -106,7 +156,7 @@ export default function AdminPanelPage() {
         return;
       }
 
-      await loadUsers();
+      await loadUsers(pagination.page, pagination.pageSize, debouncedQ);
     } catch {
       setError("خطأ في الاتصال بالخادم");
     } finally {
@@ -114,24 +164,18 @@ export default function AdminPanelPage() {
     }
   }
 
-  const filtered = useMemo(() => {
-    const x = q.trim().toLowerCase();
-    if (!x) return users;
-
-    return users.filter((u) => {
-      return (
-        (u.phone || "").toLowerCase().includes(x) ||
-        (u.refCode || "").toLowerCase().includes(x)
-      );
-    });
-  }, [q, users]);
-
   const stats = useMemo(() => {
-    const totalUsers = users.length;
-    const totalPoints = users.reduce((sum, u) => sum + Number(u.points || 0), 0);
-    const totalJoins = users.reduce((sum, u) => sum + Number(u.joins || 0), 0);
-    return { totalUsers, totalPoints, totalJoins };
+    const pageUsers = users.length;
+    const pagePoints = users.reduce((sum, u) => sum + Number(u.points || 0), 0);
+    const pageJoins = users.reduce(
+      (sum, u) => sum + Number(u._count?.referralsGiven || 0),
+      0
+    );
+    return { pageUsers, pagePoints, pageJoins };
   }, [users]);
+
+  const canPrev = pagination.page > 1;
+  const canNext = pagination.page < pagination.totalPages;
 
   return (
     <main dir="rtl" className="min-h-screen bg-zinc-50 p-6">
@@ -143,11 +187,15 @@ export default function AdminPanelPage() {
             <p className="text-sm text-zinc-500 mt-1">
               إدارة المستخدمين والنقاط — FlyAlrafah
             </p>
+            <p className="text-xs text-zinc-400 mt-1">
+              إجمالي المستخدمين:{" "}
+              <span className="font-bold">{pagination.total}</span>
+            </p>
           </div>
 
           <div className="flex gap-2">
             <button
-              onClick={loadUsers}
+              onClick={() => loadUsers(pagination.page, pagination.pageSize, debouncedQ)}
               className="h-11 rounded-2xl px-4 bg-white border border-zinc-200 text-zinc-800 font-bold hover:bg-zinc-100 transition"
             >
               تحديث
@@ -165,74 +213,135 @@ export default function AdminPanelPage() {
           </div>
         </div>
 
-        {/* Stats */}
+        {/* Stats (page-level) */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
           <div className="rounded-2xl bg-white border border-zinc-200 p-4">
-            <div className="text-xs text-zinc-500">عدد المستخدمين</div>
+            <div className="text-xs text-zinc-500">مستخدمون في هذه الصفحة</div>
             <div className="text-2xl font-extrabold text-zinc-900 mt-1">
-              {stats.totalUsers}
+              {stats.pageUsers}
             </div>
           </div>
 
           <div className="rounded-2xl bg-white border border-zinc-200 p-4">
-            <div className="text-xs text-zinc-500">مجموع النقاط</div>
+            <div className="text-xs text-zinc-500">مجموع نقاط هذه الصفحة</div>
             <div className="text-2xl font-extrabold text-purple-700 mt-1">
-              {stats.totalPoints}
+              {stats.pagePoints}
             </div>
           </div>
 
           <div className="rounded-2xl bg-white border border-zinc-200 p-4">
-            <div className="text-xs text-zinc-500">مجموع الانضمامات</div>
+            <div className="text-xs text-zinc-500">
+              مجموع الانضمامات (هذه الصفحة)
+            </div>
             <div className="text-2xl font-extrabold text-zinc-900 mt-1">
-              {stats.totalJoins}
+              {stats.pageJoins}
             </div>
           </div>
         </div>
 
-        {/* Search + Error */}
+        {/* Search + Paging */}
         <div className="rounded-2xl bg-white border border-zinc-200 p-4 mb-4">
-          <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-            <div className="flex-1">
-              <div className="text-sm font-bold text-zinc-900 mb-2">بحث</div>
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="ابحث برقم الهاتف أو كود الدعوة..."
-                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-purple-300"
-              />
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+              <div className="flex-1">
+                <div className="text-sm font-bold text-zinc-900 mb-2">بحث</div>
+                <input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="ابحث برقم الهاتف أو كود الدعوة أو الاسم..."
+                  className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-purple-300"
+                />
+              </div>
+
+              <div className="text-sm text-zinc-500 sm:text-left">
+                {loading
+                  ? "جارٍ التحميل..."
+                  : `صفحة ${pagination.page} من ${pagination.totalPages} — النتائج: ${users.length}`}
+              </div>
             </div>
 
-            <div className="text-sm text-zinc-500 sm:text-left">
-              {loading ? "جارٍ التحميل..." : `النتائج: ${filtered.length}`}
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => loadUsers(1, pagination.pageSize, debouncedQ)}
+                  disabled={loading || pagination.page === 1}
+                  className="h-10 rounded-2xl px-4 bg-white border border-zinc-200 text-zinc-800 font-bold hover:bg-zinc-100 transition disabled:opacity-60"
+                >
+                  أول صفحة
+                </button>
+
+                <button
+                  onClick={() =>
+                    loadUsers(pagination.page - 1, pagination.pageSize, debouncedQ)
+                  }
+                  disabled={loading || !canPrev}
+                  className="h-10 rounded-2xl px-4 bg-white border border-zinc-200 text-zinc-800 font-bold hover:bg-zinc-100 transition disabled:opacity-60"
+                >
+                  السابق
+                </button>
+
+                <button
+                  onClick={() =>
+                    loadUsers(pagination.page + 1, pagination.pageSize, debouncedQ)
+                  }
+                  disabled={loading || !canNext}
+                  className="h-10 rounded-2xl px-4 bg-white border border-zinc-200 text-zinc-800 font-bold hover:bg-zinc-100 transition disabled:opacity-60"
+                >
+                  التالي
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="text-xs text-zinc-500">حجم الصفحة</div>
+                <select
+                  value={pagination.pageSize}
+                  onChange={(e) => {
+                    const ps = Number(e.target.value || 20);
+                    loadUsers(1, ps, debouncedQ);
+                  }}
+                  className="h-10 rounded-2xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-800 outline-none focus:ring-2 focus:ring-purple-300"
+                >
+                  {[10, 20, 30, 50, 100].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
+
+            {error ? (
+              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {error}
+              </div>
+            ) : null}
           </div>
-
-          {error ? (
-            <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
-            </div>
-          ) : null}
         </div>
 
         {/* List */}
         <div className="rounded-2xl bg-white border border-zinc-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-zinc-200 bg-zinc-50">
+          <div className="px-4 py-3 border-b border-zinc-200 bg-zinc-50 flex items-center justify-between">
             <div className="text-sm font-extrabold text-zinc-900">المستخدمون</div>
+            <div className="text-xs text-zinc-500">
+              إجمالي: <span className="font-bold">{pagination.total}</span>
+            </div>
           </div>
 
           {loading ? (
             <div className="p-6 text-center text-zinc-600">جاري التحميل...</div>
-          ) : filtered.length === 0 ? (
+          ) : users.length === 0 ? (
             <div className="p-6 text-center text-zinc-600">لا يوجد نتائج</div>
           ) : (
             <div className="divide-y divide-zinc-100">
-              {filtered.map((u) => {
+              {users.map((u) => {
                 const busy = busyId === u.id;
+                const joins = Number(u._count?.referralsGiven || 0);
 
                 return (
                   <div
                     key={u.id}
-                    className="p-4 flex flex-col md:flex-row md:items-center gap-3"
+                    onClick={() => goUser(u.id)}
+                    className="p-4 flex flex-col md:flex-row md:items-center gap-3 cursor-pointer hover:bg-zinc-50 transition"
                   >
                     {/* Info */}
                     <div className="flex-1">
@@ -244,6 +353,11 @@ export default function AdminPanelPage() {
                           Code:{" "}
                           <span className="font-bold text-zinc-900">{u.refCode}</span>
                         </div>
+                        {u.name ? (
+                          <div className="text-zinc-500">
+                            الاسم: <span className="font-bold text-zinc-900">{u.name}</span>
+                          </div>
+                        ) : null}
                       </div>
 
                       <div className="mt-2 grid grid-cols-3 gap-2">
@@ -257,21 +371,26 @@ export default function AdminPanelPage() {
                         <div className="rounded-xl bg-zinc-50 border border-zinc-200 p-3 text-center">
                           <div className="text-[11px] text-zinc-500">Joins</div>
                           <div className="text-lg font-extrabold text-zinc-900">
-                            {u.joins}
+                            {joins}
                           </div>
                         </div>
 
                         <div className="rounded-xl bg-zinc-50 border border-zinc-200 p-3 text-center">
                           <div className="text-[11px] text-zinc-500">Last Share</div>
                           <div className="text-xs font-bold text-zinc-700" dir="ltr">
-                            {u.lastShareAt ? new Date(u.lastShareAt).toLocaleString() : "—"}
+                            {u.lastShareAt
+                              ? new Date(u.lastShareAt).toLocaleString()
+                              : "—"}
                           </div>
                         </div>
                       </div>
                     </div>
 
                     {/* Actions */}
-                    <div className="flex flex-wrap gap-2 justify-end">
+                    <div
+                      className="flex flex-wrap gap-2 justify-end"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <button
                         onClick={() => changePoints(u.id, 10)}
                         disabled={busyId !== "" && !busy}
@@ -304,7 +423,7 @@ export default function AdminPanelPage() {
         </div>
 
         <p className="text-center text-xs text-zinc-400 mt-4">
-          * Joins يتم حسابها من جدول Referral تلقائياً
+          * Joins يتم حسابها من جدول Referral تلقائياً (referralsGiven count)
         </p>
       </div>
     </main>

@@ -1,36 +1,34 @@
+// app/api/check/route.ts
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { prisma } from "@/app/lib/prisma";
+import { verifySessionToken } from "@/app/lib/session";
 
-function normalizeDigits(input: string) {
-  const map: Record<string, string> = {
-    "٠": "0","١": "1","٢": "2","٣": "3","٤": "4","٥": "5","٦": "6","٧": "7","٨": "8","٩": "9",
-    "۰": "0","۱": "1","۲": "2","۳": "3","۴": "4","۵": "5","۶": "6","۷": "7","۸": "8","۹": "9",
-  };
-  return input.replace(/[٠-٩۰-۹]/g, (d) => map[d] ?? d);
-}
+const SHARE_COOLDOWN_MIN = 30;
 
-function cleanPhoneDigits(input: string) {
-  const x = normalizeDigits(String(input || "")).replace(/[^\d+]/g, "");
-  return x.replace(/\+/g, "");
-}
-
-function isValidPhoneDigits(digits: string) {
-  return digits.length >= 8 && digits.length <= 15;
-}
-
-const SHARE_COOLDOWN_MIN = 1;
-
-export async function POST(req: Request) {
+export async function POST() {
   try {
-    const body = await req.json().catch(() => ({} as any));
+    const cookieStore = await cookies();
+    const token = cookieStore.get("fa_session")?.value;
 
-    const phone = cleanPhoneDigits(body.phone);
-    if (!phone || !isValidPhoneDigits(phone)) {
-      return NextResponse.json({ ok: false, error: "invalid_phone" }, { status: 400 });
+    if (!token) {
+      return NextResponse.json(
+        { ok: false, error: "unauthorized" },
+        { status: 401, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
+    const decoded = verifySessionToken(token);
+    if (!decoded) {
+      cookieStore.set("fa_session", "", { path: "/", maxAge: 0 });
+      return NextResponse.json(
+        { ok: false, error: "invalid_session" },
+        { status: 401, headers: { "Cache-Control": "no-store" } }
+      );
     }
 
     const user = await prisma.user.findUnique({
-      where: { phone },
+      where: { id: decoded.userId },
       select: {
         id: true,
         phone: true,
@@ -38,45 +36,64 @@ export async function POST(req: Request) {
         destination: true,
         refCode: true,
         points: true,
+        sharesGiven: true, // ✅ NEW
         lastShareAt: true,
         createdAt: true,
       },
     });
 
     if (!user) {
-      return NextResponse.json({ ok: false, error: "user_not_found" }, { status: 404 });
+      cookieStore.set("fa_session", "", { path: "/", maxAge: 0 });
+      return NextResponse.json(
+        { ok: false, error: "user_not_found" },
+        { status: 404, headers: { "Cache-Control": "no-store" } }
+      );
     }
 
+    // ✅ joins = successful joins (claimed only)
     const joins = await prisma.referral.count({
-      where: { referrerId: user.id },
+      where: {
+        referrerId: user.id,
+        referredUserId: { not: null },
+      },
     });
 
     const now = Date.now();
-    const last = user.lastShareAt ? new Date(user.lastShareAt).getTime() : 0;
+    const last = user.lastShareAt ? user.lastShareAt.getTime() : 0;
     const cooldownMs = SHARE_COOLDOWN_MIN * 60_000;
 
     const isBlocked = !!last && now - last < cooldownMs;
-    const waitMinutes = isBlocked ? Math.max(1, Math.ceil((cooldownMs - (now - last)) / 60_000)) : 0;
+    const waitMinutes = isBlocked
+      ? Math.max(1, Math.ceil((cooldownMs - (now - last)) / 60_000))
+      : 0;
 
-    return NextResponse.json({
-      ok: true,
-      user: {
-        phone: user.phone,
-        name: user.name,
-        destination: user.destination,
-        refCode: user.refCode,
-        points: user.points,
-        joins,
-        lastShareAt: user.lastShareAt ? user.lastShareAt.toISOString() : null,
-        createdAt: user.createdAt.toISOString(),
+    return NextResponse.json(
+      {
+        ok: true,
+        user: {
+          phone: user.phone,
+          name: user.name,
+          destination: user.destination ?? null,
+          refCode: user.refCode,
+          points: user.points,
+          joins,
+          sharesGiven: user.sharesGiven, // ✅ NEW
+          lastShareAt: user.lastShareAt ? user.lastShareAt.toISOString() : null,
+          createdAt: user.createdAt.toISOString(),
+        },
+        shareCooldown: {
+          isBlocked,
+          waitMinutes,
+          lastShareAt: user.lastShareAt ? user.lastShareAt.toISOString() : null,
+        },
       },
-      shareCooldown: {
-        isBlocked,
-        waitMinutes,
-        lastShareAt: user.lastShareAt ? user.lastShareAt.toISOString() : null,
-      },
-    });
-  } catch {
-    return NextResponse.json({ ok: false, error: "server_error" }, { status: 500 });
+      { status: 200, headers: { "Cache-Control": "no-store" } }
+    );
+  } catch (e) {
+    console.error("CHECK_ERROR", e);
+    return NextResponse.json(
+      { ok: false, error: "server_error" },
+      { status: 500, headers: { "Cache-Control": "no-store" } }
+    );
   }
 }

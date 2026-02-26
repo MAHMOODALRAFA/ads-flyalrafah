@@ -1,27 +1,40 @@
+// app/api/admin/login/route.ts
 import { NextResponse } from "next/server";
+import { setAdminCookie } from "@/lib/adminAuth";
+
+export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    const { username, password } = await req.json();
+    const body = await req.json().catch(() => ({} as any));
+    const password = String(body?.password ?? "");
 
-    if (!username || !password) {
-      return NextResponse.json({ ok: false, error: "missing" }, { status: 400 });
+    const expected = process.env.ADMIN_PASSWORD ?? "";
+    if (!expected) {
+      return NextResponse.json(
+        { ok: false, error: "missing admin password" },
+        { status: 500, headers: { "Cache-Control": "no-store" } }
+      );
     }
 
-    const u = (process.env.ADMIN_USER || "").trim();
-    const p = (process.env.ADMIN_PASS || "").trim();
-
-    // اگر env ها ست نشده باشند
-    if (!u || !p) {
-      return NextResponse.json({ ok: false, error: "env_missing" }, { status: 500 });
+    if (password !== expected) {
+      return NextResponse.json(
+        { ok: false, error: "invalid password" },
+        { status: 401, headers: { "Cache-Control": "no-store" } }
+      );
     }
 
-    if (String(username).trim() !== u || String(password).trim() !== p) {
-      return NextResponse.json({ ok: false, error: "invalid" }, { status: 401 });
-    }
+    // ✅ ست کردن کوکی ادمین (با نسخه جدید adminAuth.ts)
+    setAdminCookie();
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json(
+      { ok: true },
+      { status: 200, headers: { "Cache-Control": "no-store" } }
+    );
   } catch {
-    return NextResponse.json({ ok: false, error: "server" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "bad request" },
+      { status: 400, headers: { "Cache-Control": "no-store" } }
+    );
   }
 }

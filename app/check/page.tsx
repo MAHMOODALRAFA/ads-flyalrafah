@@ -1,169 +1,96 @@
-"use client";
+// app/api/check/route.ts
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { prisma } from "@/app/lib/prisma";
+import { verifySessionToken } from "@/app/lib/session";
 
-import Image from "next/image";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { getPhone, hasStarted, hasAnsweredQuestions } from "@/app/lib/referral";
+const SHARE_COOLDOWN_SEC = 60;
 
-type CheckResponse =
-  | {
-      ok: true;
-      user: {
-        phone: string;
-        name: string | null;
-        destination: string | null;
-        refCode: string;
-        points: number;
-        joins: number;
-        lastShareAt: string | null;
-        createdAt: string;
-      };
-      shareCooldown: {
-        isBlocked: boolean;
-        waitMinutes: number;
-        lastShareAt: string | null;
-      };
-    }
-  | { ok: false; error: string };
+export async function POST() {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("fa_session")?.value;
 
-export default function CheckPage() {
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<CheckResponse | null>(null);
-
-  useEffect(() => {
-    if (!hasStarted()) {
-      router.replace("/start");
-      return;
+    if (!token) {
+      return NextResponse.json(
+        { ok: false, error: "unauthorized" },
+        { status: 401, headers: { "Cache-Control": "no-store" } }
+      );
     }
 
-    const phone = getPhone();
-    if (!phone) {
-      router.replace("/start");
-      return;
+    const decoded = verifySessionToken(token);
+    if (!decoded) {
+      cookieStore.set("fa_session", "", { path: "/", maxAge: 0 });
+      return NextResponse.json(
+        { ok: false, error: "invalid_session" },
+        { status: 401, headers: { "Cache-Control": "no-store" } }
+      );
     }
 
-    (async () => {
-      try {
-        setLoading(true);
-        const res = await fetch("/api/check", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone }),
-        });
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: {
+        phone: true,
+        name: true,
+        destination: true,
+        refCode: true,
+        points: true,
+        sharesGiven: true,
+        lastShareAt: true,
+        createdAt: true,
+      },
+    });
 
-        const json = (await res.json().catch(() => null)) as CheckResponse | null;
+    if (!user) {
+      return NextResponse.json(
+        { ok: false, error: "not_found" },
+        { status: 404, headers: { "Cache-Control": "no-store" } }
+      );
+    }
 
-        if (!res.ok || !json) {
-          setData({ ok: false, error: "server_error" });
-        } else {
-          setData(json);
-        }
-      } catch {
-        setData({ ok: false, error: "network_error" });
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [router]);
+    // ✅ count only real joins (claimed)
+    const joins = await prisma.referral.count({
+      where: { referrerId: decoded.userId, referredUserId: { not: null } },
+    });
 
-  const user = data && data.ok ? data.user : null;
-  const cooldown = data && data.ok ? data.shareCooldown : null;
+    const now = Date.now();
+    const last = user.lastShareAt ? user.lastShareAt.getTime() : 0;
+    const elapsed = last ? now - last : Infinity;
 
-  const qaDone = hasAnsweredQuestions();
+    const remainingMs = Math.max(0, SHARE_COOLDOWN_SEC * 1000 - elapsed);
+    const cooldownRemainingSec = Math.ceil(remainingMs / 1000);
 
-  return (
-    <main dir="rtl" className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-lg p-6">
-          {/* ✅ Logo (small, no layout break) */}
-          <div className="flex justify-center mb-3">
-            <Image
-              src="/logo.png"
-              alt="FlyAlrafah"
-              width={150}
-              height={52}
-              className="h-10 w-auto"
-              priority
-            />
-          </div>
+    const isBlocked = cooldownRemainingSec > 0;
+    const waitMinutes = Math.max(1, Math.ceil(cooldownRemainingSec / 60));
 
-          <h1 className="text-2xl font-bold text-center text-zinc-900 mb-2">
-            نقاطك و رابطك
-          </h1>
-          <p className="text-center text-sm text-zinc-500 mb-6">
-            تابع نقاطك و شارك رابطك مع الأصدقاء
-          </p>
-
-          {!qaDone ? (
-            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-zinc-800">
-              ⚠️ قبل المشاركة، أكمل 3 أسئلة سريعة لتفعيل الحساب.
-            </div>
-          ) : null}
-
-          {loading ? (
-            <div className="text-center text-zinc-600">جاري التحميل...</div>
-          ) : !data || data.ok === false ? (
-            <div className="text-center">
-              <div className="text-red-600 font-semibold mb-3">حصل خطأ</div>
-              <button
-                onClick={() => window.location.reload()}
-                className="w-full rounded-2xl py-3 bg-zinc-900 text-white font-bold"
-              >
-                إعادة المحاولة
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* Points */}
-              <div className="rounded-2xl border border-zinc-200 p-4">
-                <div className="text-sm text-zinc-500 mb-1">النقاط</div>
-                <div className="text-3xl font-extrabold text-purple-700">{user!.points}</div>
-              </div>
-
-              {/* Ref Code */}
-              <div className="rounded-2xl border border-zinc-200 p-4">
-                <div className="text-sm text-zinc-500 mb-1">كود الدعوة (Referral)</div>
-                <div className="text-xl font-bold tracking-widest text-zinc-900">
-                  {user!.refCode}
-                </div>
-              </div>
-
-              {/* Joins */}
-              <div className="rounded-2xl border border-zinc-200 p-4">
-                <div className="text-sm text-zinc-500 mb-1">عدد الأصدقاء الذين انضموا</div>
-                <div className="text-xl font-bold text-zinc-900">{user!.joins}</div>
-              </div>
-
-              {/* Share cooldown */}
-              <div className="rounded-2xl border border-zinc-200 p-4">
-                <div className="text-sm text-zinc-500 mb-1">حالة المشاركة</div>
-                {cooldown!.isBlocked ? (
-                  <div className="text-amber-700 font-semibold">
-                    انتظر {cooldown!.waitMinutes} دقيقة قبل إضافة نقطة مشاركة جديدة
-                  </div>
-                ) : (
-                  <div className="text-green-700 font-semibold">يمكنك المشاركة الآن ✅</div>
-                )}
-              </div>
-
-              <button
-                onClick={() => router.push(qaDone ? "/share" : "/questions")}
-                className="w-full rounded-2xl py-4 bg-purple-600 text-white font-bold shadow-md hover:bg-purple-700 transition"
-              >
-                {qaDone ? "الذهاب لصفحة المشاركة" : "أكمل الأسئلة أولاً"}
-              </button>
-
-              <button
-                onClick={() => router.push(qaDone ? "/share-progress" : "/questions")}
-                className="w-full rounded-2xl py-3 bg-zinc-100 text-zinc-900 font-bold"
-              >
-                {qaDone ? "عرض التقدم" : "الذهاب للأسئلة"}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </main>
-  );
+    return NextResponse.json(
+      {
+        ok: true,
+        user: {
+          phone: user.phone,
+          name: user.name,
+          destination: user.destination,
+          refCode: user.refCode,
+          points: Number(user.points || 0),
+          joins,
+          sharesGiven: Number(user.sharesGiven || 0),
+          lastShareAt: user.lastShareAt ? user.lastShareAt.toISOString() : null,
+          createdAt: user.createdAt.toISOString(),
+        },
+        shareCooldown: {
+          isBlocked,
+          cooldownRemainingSec,
+          waitMinutes,
+          lastShareAt: user.lastShareAt ? user.lastShareAt.toISOString() : null,
+        },
+      },
+      { status: 200, headers: { "Cache-Control": "no-store" } }
+    );
+  } catch (e) {
+    console.error("CHECK_ERROR", e);
+    return NextResponse.json(
+      { ok: false, error: "server_error" },
+      { status: 500, headers: { "Cache-Control": "no-store" } }
+    );
+  }
 }

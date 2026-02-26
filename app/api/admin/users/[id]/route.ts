@@ -1,4 +1,4 @@
-// app/api/admin/reset/route.ts
+// app/api/admin/users/[id]/route.ts
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
@@ -6,7 +6,7 @@ import { isAdminAuthedServer } from "@/lib/adminAuth";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(req: Request) {
+export async function DELETE(_: Request, ctx: { params: { id: string } }) {
   try {
     if (!isAdminAuthedServer()) {
       return NextResponse.json(
@@ -15,22 +15,19 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json().catch(() => ({} as any));
+    const id = String(ctx.params.id || "").trim();
 
-    const userId = String(body.userId || "").trim();
-    const wipeReferrals = Boolean(body.wipeReferrals);
-
-    if (!userId) {
+    if (!id) {
       return NextResponse.json(
-        { ok: false, error: "missing_userId" },
+        { ok: false, error: "missing_id" },
         { status: 400, headers: { "Cache-Control": "no-store" } }
       );
     }
 
     // ✅ بررسی وجود کاربر
     const existing = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true },
+      where: { id },
+      select: { id: true, phone: true },
     });
 
     if (!existing) {
@@ -40,38 +37,25 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ ریست امن
-    const updated = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        points: 0,
-        lastShareAt: null,
-      },
-      select: {
-        id: true,
-        phone: true,
-        points: true,
-        lastShareAt: true,
-        refCode: true,
-      },
-    });
+    // ✅ Transactional delete
+    await prisma.$transaction([
+      prisma.referral.deleteMany({
+        where: { referrerId: id },
+      }),
 
-    // ✅ پاک‌کردن referrals (اختیاری)
-    if (wipeReferrals) {
-      await prisma.referral.deleteMany({
-        where: { referrerId: userId },
-      });
-    }
+      prisma.user.delete({
+        where: { id },
+      }),
+    ]);
 
     return NextResponse.json(
       {
         ok: true,
-        user: updated,
-        wipedReferrals: wipeReferrals,
+        deletedUser: existing.phone,
       },
       { headers: { "Cache-Control": "no-store" } }
     );
-  } catch {
+  } catch (err) {
     return NextResponse.json(
       { ok: false, error: "server_error" },
       { status: 500, headers: { "Cache-Control": "no-store" } }
