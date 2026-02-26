@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 type JoinResponse =
@@ -10,14 +10,39 @@ type JoinResponse =
       addedPoints?: number;
       reason?: "already_joined" | "invalid_ref" | "self_join" | string;
     }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error:
+        | "invalid_ref_code"
+        | "already_joined"
+        | "self_join_not_allowed"
+        | "unauthorized"
+        | "server_error"
+        | string;
+    };
 
 function normalizeDigits(input: string) {
   const map: Record<string, string> = {
-    "٠": "0","١": "1","٢": "2","٣": "3","٤": "4",
-    "٥": "5","٦": "6","٧": "7","٨": "8","٩": "9",
-    "۰": "0","۱": "1","۲": "2","۳": "3","۴": "4",
-    "۵": "5","۶": "6","۷": "7","۸": "8","۹": "9",
+    "٠": "0",
+    "١": "1",
+    "٢": "2",
+    "٣": "3",
+    "٤": "4",
+    "٥": "5",
+    "٦": "6",
+    "٧": "7",
+    "٨": "8",
+    "٩": "9",
+    "۰": "0",
+    "۱": "1",
+    "۲": "2",
+    "۳": "3",
+    "۴": "4",
+    "۵": "5",
+    "۶": "6",
+    "۷": "7",
+    "۸": "8",
+    "۹": "9",
   };
 
   return String(input || "").replace(/[٠-٩۰-۹]/g, (d) => map[d] ?? d);
@@ -34,7 +59,6 @@ function cleanPhone(input: string) {
 function isValidWhatsapp(input: string) {
   const x = cleanPhone(input);
   const digits = x.replace(/\+/g, "");
-
   return digits.length >= 8 && digits.length <= 15;
 }
 
@@ -42,19 +66,17 @@ export default function ReferralJoinPage() {
   const router = useRouter();
   const params = useParams<{ code: string }>();
 
-  const refCode = useMemo(
-    () => String(params?.code || "").trim(),
-    [params]
-  );
+  const refCode = useMemo(() => String(params?.code || "").trim(), [params]);
 
   const [whatsapp, setWhatsapp] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // ✅ Guard اگر لینک خراب بود
-  if (!refCode) {
-    router.replace("/");
-    return null;
-  }
+  // ✅ Guard إذا الرابط فاضي/خربان (لا تستخدم router.replace داخل render)
+  useEffect(() => {
+    if (!refCode) router.replace("/");
+  }, [refCode, router]);
+
+  if (!refCode) return null;
 
   async function submit() {
     if (submitting) return;
@@ -82,20 +104,29 @@ export default function ReferralJoinPage() {
         return;
       }
 
-      if (!data.ok) {
-        if (data.error === "invalid_ref_code") {
+      // ✅ Narrowing صحيح (يمنع خطأ TypeScript على data.error)
+      if (data.ok === false) {
+        const err = data.error;
+
+        if (err === "invalid_ref_code" || err === "invalid_ref") {
           alert("هذا الرابط غير صالح");
           return;
         }
 
-        if (data.error === "already_joined") {
+        if (err === "already_joined") {
           alert("تم تسجيلك مسبقاً ✅");
           router.replace("/friend-registered");
           return;
         }
 
-        if (data.error === "self_join_not_allowed") {
+        if (err === "self_join_not_allowed" || err === "self_join") {
           alert("لا يمكن استخدام رابطك لتسجيل نفسك");
+          return;
+        }
+
+        if (err === "unauthorized") {
+          alert("يرجى التسجيل أولاً");
+          router.replace("/start");
           return;
         }
 
@@ -105,7 +136,6 @@ export default function ReferralJoinPage() {
 
       // ✅ Success
       alert(data.credited ? "تم تسجيلك ✅" : "تم تسجيلك مسبقاً ✅");
-
       router.replace("/friend-registered");
     } catch {
       alert("تعذر الاتصال بالخادم");
@@ -115,7 +145,10 @@ export default function ReferralJoinPage() {
   }
 
   return (
-    <main dir="rtl" className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
+    <main
+      dir="rtl"
+      className="min-h-screen bg-zinc-50 flex items-center justify-center p-6"
+    >
       <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-6">
         <h1 className="text-2xl font-bold text-center text-zinc-900 mb-2">
           أهلاً بك 👋
