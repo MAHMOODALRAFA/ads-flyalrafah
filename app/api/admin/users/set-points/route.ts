@@ -1,12 +1,15 @@
 // app/api/admin/users/set-points/route.ts
+
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
-import { isAdminAuthedServer } from "@/lib/adminAuth";
+import { isAdminAuthenticatedServer } from "@/lib/adminAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  if (!isAdminAuthedServer()) {
+  const isAdmin = await isAdminAuthenticatedServer();
+
+  if (!isAdmin) {
     return NextResponse.json(
       { ok: false, error: "unauthorized" },
       { status: 401, headers: { "Cache-Control": "no-store" } }
@@ -14,6 +17,7 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json().catch(() => ({} as any));
+
   const userId = String(body?.userId || "");
   const points = Number(body?.points);
 
