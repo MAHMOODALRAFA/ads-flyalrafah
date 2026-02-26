@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { REQUIRED_SHARES, hasAnsweredQuestions, setPhone } from "../lib/referral";
-import { getAppOrigin } from "../lib/origin";
+import { getAppOrigin } from "@/lib/origin";
 
 type CheckOk = {
   ok: true;
