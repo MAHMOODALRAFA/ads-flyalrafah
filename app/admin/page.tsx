@@ -1,5 +1,4 @@
 // app/admin/page.tsx
-
 import { redirect } from "next/navigation";
 import AdminClient from "./ui/AdminClient";
 import { isAdminAuthenticatedServer } from "@/lib/adminAuth";
