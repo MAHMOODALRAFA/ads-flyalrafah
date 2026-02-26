@@ -8,6 +8,10 @@ export const revalidate = 0;
 
 export default async function AdminPage() {
   const ok = await isAdminAuthenticatedServer();
-  if (!ok) redirect("/admin/login");
+
+  if (!ok) {
+    redirect("/admin/login");
+  }
+
   return <AdminClient />;
 }
