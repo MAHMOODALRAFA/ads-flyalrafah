@@ -6,9 +6,10 @@ export const dynamic = "force-dynamic";
 
 const noStore = { headers: { "Cache-Control": "no-store" } };
 
-type Ctx = { params: { id: string } };
-
-export async function GET(_req: Request, { params }: Ctx) {
+export async function GET(
+  _req: Request,
+  context: { params: { id: string } }
+) {
   try {
     const isAdmin = await isAdminAuthenticatedServer();
     if (!isAdmin) {
@@ -18,7 +19,7 @@ export async function GET(_req: Request, { params }: Ctx) {
       );
     }
 
-    const id = String(params.id ?? "").trim();
+    const id = String(context.params.id ?? "").trim();
 
     if (!id) {
       return NextResponse.json(
