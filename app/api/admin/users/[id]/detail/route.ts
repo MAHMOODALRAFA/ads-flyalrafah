@@ -4,29 +4,24 @@ import { isAdminAuthenticatedServer } from "@/lib/adminAuth";
 
 export const dynamic = "force-dynamic";
 
+const noStore = { headers: { "Cache-Control": "no-store" } };
+
 export async function GET(_: Request, ctx: { params: { id: string } }) {
   try {
     const isAdmin = await isAdminAuthenticatedServer();
 
     if (!isAdmin) {
-      return NextResponse.json(
-        { ok: false, error: "unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401, ...noStore });
     }
 
     const id = String(ctx.params.id || "").trim();
 
     if (!id) {
-      return NextResponse.json(
-        { ok: false, error: "missing_id" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "missing_id" }, { status: 400, ...noStore });
     }
 
     const user = await prisma.user.findUnique({
       where: { id },
-
       select: {
         id: true,
         phone: true,
@@ -38,23 +33,14 @@ export async function GET(_: Request, ctx: { params: { id: string } }) {
         createdAt: true,
         updatedAt: true,
 
-        // ✅ Referrals
         referralsGiven: {
-          select: {
-            id: true,
-            referredPhone: true,
-            createdAt: true,
-          },
+          select: { id: true, referredPhone: true, createdAt: true },
           orderBy: { createdAt: "desc" },
+          take: 50,
         },
 
-        _count: {
-          select: {
-            referralsGiven: true,
-          },
-        },
+        _count: { select: { referralsGiven: true } },
 
-        // ✅ Answers
         answer: {
           select: {
             destination: true,
@@ -67,22 +53,12 @@ export async function GET(_: Request, ctx: { params: { id: string } }) {
     });
 
     if (!user) {
-      return NextResponse.json(
-        { ok: false, error: "not_found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ ok: false, error: "not_found" }, { status: 404, ...noStore });
     }
 
-    return NextResponse.json(
-      { ok: true, user },
-      { headers: { "Cache-Control": "no-store" } }
-    );
+    return NextResponse.json({ ok: true, user }, noStore);
   } catch (err) {
     console.error("ADMIN_USER_DETAIL_ERROR", err);
-
-    return NextResponse.json(
-      { ok: false, error: "server_error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: "server_error" }, { status: 500, ...noStore });
   }
 }
