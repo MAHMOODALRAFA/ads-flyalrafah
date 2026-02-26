@@ -4,56 +4,69 @@ import { isAdminAuthenticatedServer } from "@/lib/adminAuth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
+const noStore = { headers: { "Cache-Control": "no-store" } };
+
+export async function GET(_req: Request, { params }: { params: any }) {
   try {
     const isAdmin = await isAdminAuthenticatedServer();
-
     if (!isAdmin) {
       return NextResponse.json(
         { ok: false, error: "unauthorized" },
-        { status: 401 }
+        { status: 401, ...noStore }
       );
     }
 
-    const id = params.id;
+    // ✅ مهم: params در بعضی نسخه‌ها Promise میاد
+    const p = await Promise.resolve(params);
+    const id = String(p?.id ?? "").trim();
 
     if (!id) {
       return NextResponse.json(
         { ok: false, error: "missing_id" },
-        { status: 400 }
+        { status: 400, ...noStore }
       );
     }
 
     const user = await prisma.user.findUnique({
       where: { id },
-      include: {
+      select: {
+        id: true,
+        phone: true,
+        name: true,
+        destination: true,
+        refCode: true,
+        points: true,
+        lastShareAt: true,
+        createdAt: true,
+        updatedAt: true,
+
         referralsGiven: {
+          select: { id: true, referredPhone: true, createdAt: true },
           orderBy: { createdAt: "desc" },
           take: 50,
         },
-        _count: {
-          select: { referralsGiven: true },
+
+        _count: { select: { referralsGiven: true } },
+
+        answer: {
+          select: { destination: true, q1: true, q2: true, updatedAt: true },
         },
-        answer: true,
       },
     });
 
     if (!user) {
       return NextResponse.json(
         { ok: false, error: "not_found" },
-        { status: 404 }
+        { status: 404, ...noStore }
       );
     }
 
-    return NextResponse.json({ ok: true, user });
-  } catch (error) {
-    console.error("ADMIN_USER_DETAIL_ERROR", error);
+    return NextResponse.json({ ok: true, user }, noStore);
+  } catch (err) {
+    console.error("ADMIN_USER_DETAIL_ERROR", err);
     return NextResponse.json(
       { ok: false, error: "server_error" },
-      { status: 500 }
+      { status: 500, ...noStore }
     );
   }
 }
