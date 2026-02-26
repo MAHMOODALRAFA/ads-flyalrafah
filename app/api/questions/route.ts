@@ -55,28 +55,44 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ Upsert answers for this user (safe)
-    const answer = await prisma.questionAnswer.upsert({
+    // ✅ Because userId is NOT unique in schema, we can't use upsert(where: { userId })
+    const existing = await prisma.questionAnswer.findFirst({
       where: { userId: user.id },
-      create: {
-        userId: user.id,
-        destination,
-        q1,
-        q2,
-      },
-      update: {
-        destination,
-        q1,
-        q2,
-      },
-      select: {
-        id: true,
-        destination: true,
-        q1: true,
-        q2: true,
-        updatedAt: true,
-      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
     });
+
+    const answer = existing
+      ? await prisma.questionAnswer.update({
+          where: { id: existing.id },
+          data: {
+            destination,
+            q1,
+            q2,
+          },
+          select: {
+            id: true,
+            destination: true,
+            q1: true,
+            q2: true,
+            createdAt: true,
+          },
+        })
+      : await prisma.questionAnswer.create({
+          data: {
+            userId: user.id,
+            destination,
+            q1,
+            q2,
+          },
+          select: {
+            id: true,
+            destination: true,
+            q1: true,
+            q2: true,
+            createdAt: true,
+          },
+        });
 
     return NextResponse.json({ ok: true, answer }, { headers: noStore() });
   } catch (err) {

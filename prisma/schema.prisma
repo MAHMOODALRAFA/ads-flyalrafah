@@ -69,7 +69,8 @@ model Referral {
 
 model QuestionAnswer {
   id     String @id @default(cuid())
-  userId String
+
+  userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   destination Destination
@@ -77,7 +78,7 @@ model QuestionAnswer {
   q2          String
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([destination, createdAt])
-  @@index([userId, createdAt])
 }
