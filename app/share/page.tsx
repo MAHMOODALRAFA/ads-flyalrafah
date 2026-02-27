@@ -57,6 +57,7 @@ export default function SharePage() {
 
 ✅ شارك الرابط مع ${REQUIRED_SHARES} من أصدقائك عبر واتساب
 ⭐ كل مشاركة = نقاط أكثر + فرصة أكبر للفوز
+
 🔹 مسقط – شيراز
 🔹 مسقط – الأهواز
 🔹 مسقط – شابهار
@@ -211,7 +212,8 @@ https://wa.me/96872680912
 
           {cooldownBlocked && cooldownSec > 0 ? (
             <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-zinc-700">
-              ⏳ يمكنك الحصول على نقطة جديدة بعد حوالي <b>{cooldownSec}</b> ثانية.
+              شارك الرابط مع أصدقاء لزيادة نقاطك وفرصتك في القرعة 🎯
+
             </div>
           ) : null}
 

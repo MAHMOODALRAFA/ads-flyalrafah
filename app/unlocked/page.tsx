@@ -131,35 +131,10 @@ ${referralLink}
     }
   }
 
-  async function shareAgain() {
-    if (sharing) return;
-
-    try {
-      setSharing(true);
-
-      // credit share (server decides cooldown)
-      const res = await fetch("/api/share", {
-        method: "POST",
-        cache: "no-store",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      const data = (await res.json().catch(() => null)) as ShareResponse | null;
-
-      if (res.ok && data && data.ok) {
-        if (typeof data.user?.points === "number") setPoints(data.user.points);
-        if (typeof data.user?.sharesGiven === "number") setSharesGiven(data.user.sharesGiven);
-      }
-
-      sessionStorage.setItem("wa_pending_share", "1");
-      window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, "_blank");
-    } catch {
-      sessionStorage.setItem("wa_pending_share", "1");
-      window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, "_blank");
-    } finally {
-      setSharing(false);
-    }
-  }
+ function shareAgain() {
+  if (sharing) return;
+  router.push("/share");
+}
 
   if (loading) {
     return (
