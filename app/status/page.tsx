@@ -34,6 +34,18 @@ export default function StatusPage() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<CheckResponse | null>(null);
 
+  // ✅ FIX hydration: do not call hasAnsweredQuestions() during render
+  const [qaDone, setQaDone] = useState(false);
+
+  useEffect(() => {
+    // runs only on client
+    try {
+      setQaDone(hasAnsweredQuestions());
+    } catch {
+      setQaDone(false);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -80,7 +92,6 @@ export default function StatusPage() {
     };
   }, [router]);
 
-  const qaDone = hasAnsweredQuestions();
   const user = data && data.ok ? data.user : null;
   const cooldown = data && data.ok ? data.shareCooldown : null;
 
@@ -153,11 +164,10 @@ export default function StatusPage() {
 
               <div className="rounded-2xl border border-zinc-200 p-4">
                 <div className="text-sm text-zinc-500 mb-1">حالة المشاركة</div>
+
                 {cooldown!.isBlocked ? (
                   <div className="text-amber-700 font-semibold">
-                    انتظر{" "}
-                    {typeof remainingSec === "number" ? `${remainingSec} ثانية` : "قليلاً"}{" "}
-                    قبل إضافة نقطة مشاركة جديدة
+                    تم تسجيل آخر مشاركة ✅ يمكنك المحاولة مرة أخرى لاحقًا لزيادة نقاطك 🎯
                   </div>
                 ) : (
                   <div className="text-green-700 font-semibold">يمكنك المشاركة الآن ✅</div>

@@ -391,22 +391,42 @@ export default function ShareProgressPage() {
 
   const title = useMemo(() => {
     if (stage === "loading") return "جارٍ التحميل...";
-    if (stage === "need_share") return "مشاركة واحدة مطلوبة أولاً";
-    if (stage === "verifying_share") return "جارٍ التحقق من الإرسال إلى 5 أصدقاء";
+
+    if (stage === "need_share") {
+      // قبل أول مشاركة: نطلب مشاركة واحدة فقط
+      return "مشاركة واحدة مطلوبة أولاً";
+    }
+
+    if (stage === "verifying_share") {
+      // ✅ قبل أول Share: نستخدم نص “5 أصدقاء” (كحملة)
+      // ✅ بعد التفعيل (sharesGiven >= 1): نص عام بدون رقم
+      return sharesGiven >= 1
+        ? "جارٍ التحقق من الإرسال..."
+        : "جارٍ التحقق من الإرسال إلى 5 أصدقاء";
+    }
+
     if (stage === "need_ig") return "شرط إنستغرام 📲";
+
     return "جارٍ إكمال التفعيل...";
-  }, [stage]);
+  }, [stage, sharesGiven]);
 
   const subtitle = useMemo(() => {
     if (stage === "need_share")
       return "اضغط مشاركة الرابط مرة واحدة عبر واتساب ثم ارجع هنا لإكمال التفعيل.";
-    if (stage === "verifying_share")
-      return "نقوم بمراجعة عملية الإرسال (فقط للتأكد) — انتظر قليلاً.";
+
+    if (stage === "verifying_share") {
+      return sharesGiven >= 1
+        ? "نقوم بمراجعة عملية الإرسال (فقط للتأكد) — انتظر قليلاً."
+        : "نقوم بمراجعة عملية الإرسال إلى الأصدقاء (فقط للتأكد) — انتظر قليلاً.";
+    }
+
     if (stage === "need_ig")
       return "اضغط للمتابعة على إنستغرام لإكمال التفعيل ثم سننقلك لصفحة الكود.";
+
     if (stage === "finalizing") return "لحظات وننقلك لصفحة الكود ✅";
+
     return "نجهّز حالة التفعيل";
-  }, [stage]);
+  }, [stage, sharesGiven]);
 
   return (
     <main dir="rtl" className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">

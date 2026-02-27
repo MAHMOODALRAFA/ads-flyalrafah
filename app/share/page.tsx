@@ -51,11 +51,19 @@ export default function SharePage() {
   const origin = useMemo(() => getAppOrigin().replace(/\/+$/, ""), []);
   const referralLink = useMemo(() => `${origin}/r/${refCode || "XXXX"}`, [origin, refCode]);
 
+  // ✅ copy changes after first share (activation)
+  const shareCtaLine = useMemo(() => {
+    // قبل أول مشاركة: نعرض نص “5 أصدقاء” (كحملة)
+    if (sharesGiven < 1) return `✅ شارك الرابط مع ${REQUIRED_SHARES} من أصدقائك عبر واتساب`;
+    // بعد التفعيل: نص عام بدون رقم
+    return "✅ شارك الرابط / أرسله لأصدقائك عبر واتساب";
+  }, [sharesGiven]);
+
   const messageTemplate = useMemo(() => {
     return `🎁 فرصة قرعة شهرية من FlyAlrafah
 {LINK}
 
-✅ شارك الرابط مع ${REQUIRED_SHARES} من أصدقائك عبر واتساب
+${shareCtaLine}
 ⭐ كل مشاركة = نقاط أكثر + فرصة أكبر للفوز
 
 🔹 مسقط – شيراز
@@ -68,9 +76,12 @@ export default function SharePage() {
 https://wa.me/96872680912
 
 🌐 Flyalrafah.com`;
-  }, []);
+  }, [shareCtaLine]);
 
-  const shareText = useMemo(() => messageTemplate.replace("{LINK}", referralLink), [messageTemplate, referralLink]);
+  const shareText = useMemo(
+    () => messageTemplate.replace("{LINK}", referralLink),
+    [messageTemplate, referralLink]
+  );
 
   // ✅ Session-first guard
   useEffect(() => {
@@ -112,7 +123,9 @@ https://wa.me/96872680912
 
         const sec =
           data.shareCooldown?.cooldownRemainingSec ??
-          (typeof data.shareCooldown?.waitMinutes === "number" ? data.shareCooldown.waitMinutes * 60 : 0);
+          (typeof data.shareCooldown?.waitMinutes === "number"
+            ? data.shareCooldown.waitMinutes * 60
+            : 0);
 
         setCooldownSec(sec);
       } catch {
@@ -167,6 +180,21 @@ https://wa.me/96872680912
     }
   }
 
+  const subtitleText = useMemo(() => {
+    if (sharesGiven < 1) {
+      return `شارك الرابط مع ${REQUIRED_SHARES} أصدقاء لزيادة نقاطك وفرصتك في القرعة 🎯`;
+    }
+    return "أرسل الرابط لأصدقائك لزيادة نقاطك وفرصتك في القرعة 🎯";
+  }, [sharesGiven]);
+
+  const cooldownBoxText = useMemo(() => {
+    // ✅ حذف "Cooldown" + حذف فكرة وقت الانتظار من النصوص
+    if (sharesGiven < 1) {
+      return "ابدأ بمشاركة الرابط مرة واحدة عبر واتساب، ثم ارجع للمتابعة ✅";
+    }
+    return "يمكنك مشاركة الرابط مرة أخرى لزيادة نقاطك وفرصتك في القرعة 🎯";
+  }, [sharesGiven]);
+
   if (loading) {
     return (
       <main dir="rtl" className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
@@ -197,9 +225,7 @@ https://wa.me/96872680912
           </div>
 
           <h1 className="text-2xl font-bold text-center text-zinc-900">تم إنشاء رابطك الخاص</h1>
-          <p className="text-center text-zinc-500 mt-2 mb-3">
-            شارك الرابط مع {REQUIRED_SHARES} أصدقاء لزيادة نقاطك وفرصتك في القرعة 🎯
-          </p>
+          <p className="text-center text-zinc-500 mt-2 mb-3">{subtitleText}</p>
 
           <div className="flex items-center justify-between text-sm text-zinc-600 mb-4">
             <div>
@@ -212,8 +238,7 @@ https://wa.me/96872680912
 
           {cooldownBlocked && cooldownSec > 0 ? (
             <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-zinc-700">
-              شارك الرابط مع أصدقاء لزيادة نقاطك وفرصتك في القرعة 🎯
-
+              {cooldownBoxText}
             </div>
           ) : null}
 

@@ -131,10 +131,14 @@ ${referralLink}
     }
   }
 
- function shareAgain() {
-  if (sharing) return;
-  router.push("/share");
-}
+  function shareAgain() {
+    if (sharing) return;
+    router.push("/share");
+  }
+
+  function goHome() {
+    router.push("/");
+  }
 
   if (loading) {
     return (
@@ -223,6 +227,14 @@ ${referralLink}
             className="w-full mt-3 rounded-2xl py-4 bg-zinc-100 text-zinc-700 font-bold hover:bg-zinc-200 transition"
           >
             رجوع لصفحة المشاركة
+          </button>
+
+          {/* ✅ new third button */}
+          <button
+            onClick={goHome}
+            className="w-full mt-3 rounded-2xl py-4 text-white font-extrabold shadow-md transition bg-gradient-to-r from-purple-600 via-fuchsia-500 to-amber-400 hover:opacity-95"
+          >
+            الرجوع للصفحة الرئيسية 🏠
           </button>
         </div>
 
