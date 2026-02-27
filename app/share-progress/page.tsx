@@ -477,45 +477,7 @@ export default function ShareProgressPage() {
           </div>
         </div>
 
-        {/* Console Card (UI-only) */}
-        <div className="bg-white rounded-2xl shadow-lg p-5 border border-zinc-200">
-          <div className="flex items-center justify-between mb-3">
-            <div className="font-extrabold text-zinc-900">Activity Console</div>
-            <div className="text-xs text-zinc-500">
-              {stage === "verifying_share" || stage === "finalizing" ? "LIVE" : "IDLE"}
-            </div>
-          </div>
 
-          <div className="rounded-2xl bg-zinc-950 text-zinc-200 border border-zinc-900 p-4">
-            <div className="text-xs opacity-80 mb-2">flyalrafah://activation</div>
-
-            <div className="space-y-2 text-xs font-mono">
-              {consoleLines.length ? (
-                consoleLines.map((l) => (
-                  <div key={l.id} className="flex gap-2">
-                    <span
-                      className={[
-                        "shrink-0",
-                        l.level === "ok" ? "text-emerald-400" : "",
-                        l.level === "warn" ? "text-amber-300" : "",
-                        l.level === "info" ? "text-sky-300" : "",
-                      ].join(" ")}
-                    >
-                      {l.level === "ok" ? "✔" : l.level === "warn" ? "!" : "•"}
-                    </span>
-                    <span className="min-w-0 break-words">{l.text}</span>
-                  </div>
-                ))
-              ) : (
-                <div className="opacity-70">…</div>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-3 text-xs text-zinc-500">
-            ملاحظة: هذا عرض توضيحي لحالة المعالجة (لتحسين تجربة المستخدم).
-          </div>
-        </div>
 
         {/* Promo Rotator (UI-only) */}
         <div className="bg-white rounded-2xl shadow-lg p-5 border border-zinc-200">
@@ -534,22 +496,24 @@ export default function ShareProgressPage() {
           </div>
         </div>
 
-        {/* Banner Slot (same “block” vibe) */}
-        <div className="bg-white rounded-2xl shadow-lg p-5 border border-zinc-200">
-          <div className="font-extrabold text-zinc-900 mb-2">مساحة بنر</div>
+  {/* Banner Slot (same “block” vibe) */}
+<div className="bg-white rounded-2xl shadow-lg p-5 border border-zinc-200">
+  <div className="font-extrabold text-zinc-900 mb-2">اعلان</div>
 
-          <div className="rounded-2xl border border-zinc-200 bg-gradient-to-r from-zinc-50 via-white to-zinc-50 px-4 py-6 text-center">
-            <div className="text-sm font-extrabold text-zinc-900">بنر إعلاني / معلومات الرحلة</div>
-            <div className="text-xs text-zinc-600 mt-2">
-              ضع هنا عرضك أو صورة أو رقم واتساب أو إعلان (Placeholder).
-            </div>
-
-            <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs text-zinc-600">
-              <span className="font-bold text-zinc-900">FlyAlrafah</span>
-              <span>•</span>
-              <span>Banner Slot</span>
-            </div>
-          </div>
+  <div className="rounded-2xl border border-zinc-200 bg-gradient-to-r from-zinc-50 via-white to-zinc-50 p-3">
+    <a
+      href="https://flyalrafah.com/?lang=en"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="block"
+    >
+      <img
+        src="https://i.ibb.co/Gf3wrq7y/Chat-GPT-Image-Feb-27-2026-07-13-31-PM.png"
+        alt="FlyAlrafah Banner"
+        className="w-full h-auto rounded-xl object-cover"
+      />
+    </a>
+  </div>
         </div>
       </div>
     </main>
