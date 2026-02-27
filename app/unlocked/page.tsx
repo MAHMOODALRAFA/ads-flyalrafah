@@ -51,9 +51,7 @@ export default function UnlockedPage() {
     return window.location.origin;
   }, []);
 
-  const referralLink = useMemo(() => {
-    return `${origin}/r/${refCode}`;
-  }, [origin, refCode]);
+  const referralLink = useMemo(() => `${origin}/r/${refCode}`, [origin, refCode]);
 
   const shareText = useMemo(() => {
     return `🎉 تم تسجيلك في قرعة FlyAlrafah الشهرية!
@@ -68,7 +66,7 @@ ${referralLink}
   }, [referralLink]);
 
   useEffect(() => {
-    // ✅ local UX gate فقط
+    // local UX gate only
     if (!hasAnsweredQuestions()) {
       router.replace("/questions");
       return;
@@ -100,16 +98,11 @@ ${referralLink}
           return;
         }
 
-        const shares = Number(data.user.sharesGiven ?? 0);
-        if (shares < REQUIRED_SHARES) {
-          router.replace("/share-progress");
-          return;
-        }
-
+        // ✅ NO redirect back here anymore
         setRefCode(data.user.refCode || "XXXX");
         setPoints(Number(data.user.points || 0));
         setJoins(Number(data.user.joins || 0));
-        setSharesGiven(shares);
+        setSharesGiven(Number(data.user.sharesGiven ?? 0) || 0);
       } catch {
         if (!cancelled) router.replace("/start");
       } finally {
@@ -144,7 +137,7 @@ ${referralLink}
     try {
       setSharing(true);
 
-      // ✅ Try credit share (server decides cooldown)
+      // credit share (server decides cooldown)
       const res = await fetch("/api/share", {
         method: "POST",
         cache: "no-store",
@@ -158,7 +151,6 @@ ${referralLink}
         if (typeof data.user?.sharesGiven === "number") setSharesGiven(data.user.sharesGiven);
       }
 
-      // ✅ open WhatsApp anyway
       sessionStorage.setItem("wa_pending_share", "1");
       window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, "_blank");
     } catch {
@@ -203,15 +195,6 @@ ${referralLink}
               : "اسمك الآن ضمن قرعة FlyAlrafah الشهرية — وكلما زادت نقاطك زادت فرصتك 🎯"}
           </p>
 
-          <div className="mt-4 flex items-center justify-center gap-2">
-            <span className="px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-xs font-bold border border-purple-100">
-              🎟️ قرعة شهرية
-            </span>
-            <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-bold border border-amber-100">
-              ⭐ نقاط أكثر = فرصة أكبر
-            </span>
-          </div>
-
           <div className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4 text-center">
             <div className="text-xs text-zinc-500 mb-1">الكود الخاص بك</div>
             <div className="text-2xl font-extrabold tracking-widest text-zinc-900">{refCode}</div>
@@ -242,7 +225,7 @@ ${referralLink}
             <div className="rounded-2xl border border-zinc-200 p-4 text-center">
               <div className="text-xs text-zinc-500">المشاركات</div>
               <div className="text-2xl font-bold text-zinc-900">{sharesGiven}</div>
-              <div className="text-xs text-zinc-500 mt-1">المطلوب: {REQUIRED_SHARES}</div>
+              <div className="text-xs text-zinc-500 mt-1">كل مشاركة = 1 نقطة</div>
             </div>
 
             <div className="rounded-2xl border border-zinc-200 p-4 text-center">
@@ -250,15 +233,6 @@ ${referralLink}
               <div className="text-2xl font-bold text-zinc-900">{joins}</div>
               <div className="text-xs text-zinc-500 mt-1">(+10 لكل صديق)</div>
             </div>
-          </div>
-
-          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
-            <div className="font-bold text-zinc-900 mb-2">📌 كيف تزيد فرصتك؟</div>
-            <ul className="text-sm text-zinc-700 space-y-2">
-              <li>✅ كل مشاركة للرابط = <b>1 نقطة</b></li>
-              <li>👥 كل صديق يسجّل من رابطك = <b>+10 نقاط</b></li>
-              <li>🏆 <b>نقاط أكثر</b> تعني <b>فرصة أكبر</b> للفوز في القرعة الشهرية</li>
-            </ul>
           </div>
 
           <button
@@ -278,7 +252,7 @@ ${referralLink}
         </div>
 
         <p className="text-center text-xs text-zinc-400 mt-4">
-          استمر بمشاركة الرابط — نقاط أكثر = فرصة أكبر للفوز 🎯
+          استمر بالمشاركة — نقاط أكثر = فرصة أكبر للفوز 🎯
         </p>
       </div>
     </main>
