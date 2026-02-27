@@ -16,20 +16,28 @@ html {
 /* ✅ Winners Marquee (True Infinite Loop) */
 @keyframes flyMarquee {
   0% {
-    transform: translateX(0);
+    transform: translateX(0%);
   }
   100% {
     transform: translateX(-50%);
   }
 }
 
-.fly-marquee {
+.fly-marquee-wrapper {
+  overflow: hidden;
+  width: 100%;
+}
+
+.fly-marquee-track {
   display: flex;
   width: max-content;
+  animation: flyMarquee 30s linear infinite;
+}
+
+.fly-marquee-item {
   white-space: nowrap;
-  animation: flyMarquee 25s linear infinite;
-  will-change: transform;
-  gap: 24px;
+  padding-inline: 24px;
+  font-weight: 800;
 }
 
 /* Respect reduced motion */

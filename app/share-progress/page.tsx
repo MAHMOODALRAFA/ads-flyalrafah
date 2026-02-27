@@ -498,7 +498,7 @@ export default function ShareProgressPage() {
 
   {/* Banner Slot (same “block” vibe) */}
 <div className="bg-white rounded-2xl shadow-lg p-5 border border-zinc-200">
-  <div className="font-extrabold text-zinc-900 mb-2">اعلان</div>
+  <div className="font-extrabold text-zinc-900 mb-2"></div>
 
   <div className="rounded-2xl border border-zinc-200 bg-gradient-to-r from-zinc-50 via-white to-zinc-50 p-3">
     <a

@@ -5,11 +5,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   hasStarted,
-  getPhone,
   getShareCount,
   setPhone,
   resetAll,
   hasAnsweredQuestions,
+  getPhone,
 } from "@/app/lib/referral";
 
 type MeResponse =
@@ -27,6 +27,28 @@ type MeResponse =
       ok: false;
       error: "not_found" | "missing_phone" | "unauthorized" | "server_error";
     };
+
+type CheckResponse =
+  | {
+      ok: true;
+      user: {
+        phone: string;
+        name: string | null;
+        destination: string | null;
+        refCode: string;
+        points: number;
+        sharesGiven?: number;
+        lastShareAt: string | null;
+        createdAt: string;
+      };
+      shareCooldown?: {
+        isBlocked: boolean;
+        cooldownRemainingSec?: number;
+        waitMinutes?: number;
+        lastShareAt: string | null;
+      };
+    }
+  | { ok: false; error: string };
 
 function normalizePhone(input: string) {
   let x = (input || "").trim();
@@ -48,23 +70,6 @@ export default function HomePage() {
 
   const [qaDone, setQaDone] = useState(false);
 
-  useEffect(() => {
-    const s = hasStarted();
-    setStarted(s);
-
-    if (s) {
-      const p = getPhone();
-      setPhoneState(p);
-
-      setQaDone(hasAnsweredQuestions());
-
-      setPoints(getShareCount());
-
-      fetchPointsFromDb(p);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   async function fetchPointsFromDb(p: string) {
     if (!p) return;
 
@@ -84,6 +89,69 @@ export default function HomePage() {
       setPointsLoading(false);
     }
   }
+
+  async function fetchCheckSession() {
+    try {
+      const res = await fetch("/api/check", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const data = (await res.json().catch(() => null)) as CheckResponse | null;
+      if (!res.ok || !data || data.ok === false) return null;
+
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      // ✅ 1) Server-first: if session exists, update state ONLY (no redirect)
+      const check = await fetchCheckSession();
+      if (cancelled) return;
+
+      if (check?.ok) {
+        const p = check.user.phone || "";
+        if (p) setPhone(p);
+
+        setStarted(true);
+        setPhoneState(p);
+
+        setPoints(Number(check.user.points || 0));
+
+        // ✅ QA done: local OR server destination
+        const done = hasAnsweredQuestions() || !!check.user.destination;
+        setQaDone(done);
+
+        return; // ✅ stop هنا، بدون router.replace
+      }
+
+      // ✅ 2) Fallback: local gates (if no session)
+      const s = hasStarted();
+      setStarted(s);
+
+      if (s) {
+        const p = getPhone();
+        setPhoneState(p);
+
+        const done = hasAnsweredQuestions();
+        setQaDone(done);
+
+        setPoints(getShareCount());
+        fetchPointsFromDb(p);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function lookupPoints() {
     const p = normalizePhone(lookupPhone);
@@ -106,21 +174,21 @@ export default function HomePage() {
         return;
       }
 
-    if (data.ok === false) {
-  const err = data.error;
+      if (data.ok === false) {
+        const err = data.error;
 
-  if (err === "not_found") {
-    setLookupError("هذا الرقم غير مسجل — اضغط (ابدأ الآن) للتسجيل");
-  } else if (err === "missing_phone") {
-    setLookupError("يرجى إدخال رقمك");
-  } else if (err === "unauthorized") {
-    setLookupError("غير مصرح");
-  } else {
-    setLookupError("تعذر جلب البيانات");
-  }
+        if (err === "not_found") {
+          setLookupError("هذا الرقم غير مسجل — اضغط (ابدأ الآن) للتسجيل");
+        } else if (err === "missing_phone") {
+          setLookupError("يرجى إدخال رقمك");
+        } else if (err === "unauthorized") {
+          setLookupError("غير مصرح");
+        } else {
+          setLookupError("تعذر جلب البيانات");
+        }
 
-  return;
-}
+        return;
+      }
 
       setPhone(p);
       setStarted(true);
@@ -154,13 +222,14 @@ export default function HomePage() {
       router.push("/questions");
       return;
     }
-    router.push("/share-progress");
+    // ✅ user choice → status
+    router.push("/status");
   }
 
   const primaryBtnText = useMemo(() => {
-    if (!started) return "ابدأ الآن"; // ✅ بدون أيقونة/إيموجي
+    if (!started) return "ابدأ الآن";
     if (!qaDone) return "أكمل الأسئلة ✅";
-    return "عرض تقدّمي ✅";
+    return "عرض النقاط ✅";
   }, [started, qaDone]);
 
   const primaryHint = useMemo(() => {
@@ -169,14 +238,9 @@ export default function HomePage() {
     return "تابع نقاطك وواصل المشاركة لزيادة فرصتك";
   }, [started, qaDone]);
 
-  // ✅ نوار: تعريف بنا (بدون أسماء فائزين) — (لا يتم حذفه)
   const introText = useMemo(() => {
-    const items = [
-      "FlyAlrafah — عروض سفر وخدمة سريعة عبر الواتساب ✈️",
-      "شارك الرابط واجمع نقاطك للدخول في السحب الشهري 🏆",
-      "تابع إنستغرامنا @flyalrafah (شرط للدخول) 📲",
-    ];
-    return items.join("   •   ");
+    const items = ["✈️ أحجز جميع رحلاتك إلى إيران 🇮🇷 بسهولة عبر Flyalrafah.com"];
+    return items.join("     •     ");
   }, []);
 
   return (
@@ -223,19 +287,10 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* ✅ Intro strip */}
+        {/* ✅ Intro strip (Static) */}
         <div className="mx-auto w-full max-w-md">
-          <div className="relative overflow-hidden rounded-2xl border border-white/25 bg-white/10 backdrop-blur-xl">
-            <div className="px-4 py-2 text-xs text-white/90">
-              <div className="fly-marquee">
-                <div className="flex shrink-0">
-                  <span className="pe-12">{introText}</span>
-                </div>
-                <div className="flex shrink-0">
-                  <span className="pe-12">{introText}</span>
-                </div>
-              </div>
-            </div>
+          <div className="relative rounded-2xl border border-white/25 bg-white/10 backdrop-blur-xl">
+            <div className="px-4 py-2 text-xs text-white/90 text-center">{introText}</div>
             <div className="pointer-events-none absolute inset-y-0 left-0 w-10 bg-gradient-to-r from-purple-700/60 to-transparent" />
             <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-yellow-400/40 to-transparent" />
           </div>
@@ -264,7 +319,6 @@ export default function HomePage() {
 
               <div className="mt-4 text-sm">
                 <div className="rounded-2xl bg-white/15 border border-white/15 px-4 py-4 text-center space-y-3">
-                  {/* شروط */}
                   <div className="text-white font-extrabold text-base">الشروط ✅</div>
 
                   <div className="grid gap-2">
@@ -277,16 +331,13 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  {/* ✅ النص الجديد */}
                   <div className="text-white/90 font-semibold">
                     للبدء والتسجيل اضغط على زر <span className="underline">ابدأ الآن</span>
                   </div>
 
-                  {/* ✅ CTA أبيض داخل البرتقالي */}
                   <div className="mt-2 rounded-2xl bg-white/95 border border-white/50 px-4 py-4 text-center shadow-[0_18px_45px_rgba(0,0,0,0.18)]">
                     <div className="text-xs text-zinc-700 mb-3">🚀 {primaryHint}</div>
 
-                    {/* ✅ زر واتسابي + نص أكبر + بدون أيقونة */}
                     <button
                       onClick={goPrimary}
                       className="w-full rounded-2xl py-4 text-white font-extrabold text-lg sm:text-xl
@@ -300,9 +351,7 @@ export default function HomePage() {
 
                     {started ? (
                       <button
-                        onClick={() =>
-                          qaDone ? router.push("/share") : router.push("/questions")
-                        }
+                        onClick={() => (qaDone ? router.push("/share") : router.push("/questions"))}
                         className="w-full mt-3 rounded-2xl py-4 bg-black/10 border border-black/10 text-zinc-900 font-extrabold hover:bg-black/15 active:scale-[0.99] transition"
                       >
                         {qaDone ? "مشاركة الآن 🔗" : "أكمل الأسئلة الآن ✍️"}
@@ -317,15 +366,15 @@ export default function HomePage() {
             <div className="rounded-3xl px-6 py-5 bg-white/10 backdrop-blur-xl border border-white/25 text-white shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
               <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/15">
                 🏆
-           </div>
-           <div className="font-extrabold text-xl">جوائز شهرية قوية</div>
-           <div className="mt-1 text-white/85">
-  تذاكر مجانية أو قسائم سفر — حسب السحب الشهري ✨
-  <span className="block mt-1">💰 10 فائزين × 50 ريال</span>
-           </div>
-           </div>
+              </div>
+              <div className="font-extrabold text-xl">جوائز شهرية قوية</div>
+              <div className="mt-1 text-white/85">
+                تذاكر مجانية أو قسائم سفر — حسب السحب الشهري ✨
+                <span className="block mt-1">💰 10 فائزين × 50 ريال</span>
+              </div>
+            </div>
 
-            {/* Card 3: Lookup / Status (بدون تغییر) */}
+            {/* Card 3 */}
             <div className="rounded-3xl px-6 py-5 text-white shadow-[0_18px_50px_rgba(0,0,0,0.22)] border border-white/20 bg-gradient-to-br from-fuchsia-600/70 via-purple-600/55 to-amber-400/40 backdrop-blur-xl ring-1 ring-white/25 relative overflow-hidden text-right">
               <div className="pointer-events-none absolute -top-16 -left-16 h-40 w-40 rounded-full bg-white/15 blur-2xl" />
               <div className="pointer-events-none absolute -bottom-20 -right-20 h-48 w-48 rounded-full bg-black/10 blur-2xl" />
@@ -338,9 +387,7 @@ export default function HomePage() {
                         ✨ تحقق سريع
                       </div>
                       <div className="mt-2 font-extrabold text-xl">عرض نقاطي</div>
-                      <div className="mt-1 text-sm text-white/90">
-                        أدخل رقم واتسابك لمراجعة نقاطك
-                      </div>
+                      <div className="mt-1 text-sm text-white/90">أدخل رقم واتسابك لمراجعة نقاطك</div>
                     </div>
 
                     <div className="h-10 w-10 rounded-2xl bg-white/15 border border-white/20 flex items-center justify-center text-lg">
@@ -391,9 +438,7 @@ export default function HomePage() {
                       </div>
                       <div className="mt-2 font-extrabold text-xl">نقاطك الحالية</div>
                       <div className="mt-1 text-sm text-white/90">
-                        {qaDone
-                          ? "واصل المشاركة لزيادة فرصتك"
-                          : "أكمل 3 أسئلة سريعة لتفعيل المشاركة"}
+                        {qaDone ? "واصل المشاركة لزيادة فرصتك" : "أكمل 3 أسئلة سريعة لتفعيل المشاركة"}
                       </div>
                     </div>
 
@@ -422,23 +467,19 @@ export default function HomePage() {
 
                     <div className="mt-4 rounded-2xl bg-white/10 border border-white/15 px-4 py-4">
                       <div className="text-xs text-white/80">النقاط</div>
-                      <div className="mt-1 text-4xl font-extrabold leading-none">
-                        {points}
-                      </div>
+                      <div className="mt-1 text-4xl font-extrabold leading-none">{points}</div>
                     </div>
 
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       <button
-                        onClick={() => router.push("/check")}
+                        onClick={() => router.push("/status")}
                         className="rounded-2xl py-3 bg-white text-purple-700 font-extrabold shadow-[0_18px_50px_rgba(255,255,255,0.18)] active:scale-[0.99] transition"
                       >
                         عرض النقاط
                       </button>
 
                       <button
-                        onClick={() =>
-                          qaDone ? router.push("/share") : router.push("/questions")
-                        }
+                        onClick={() => (qaDone ? router.push("/share") : router.push("/questions"))}
                         className="rounded-2xl py-3 bg-black/20 border border-white/20 text-white font-extrabold hover:bg-black/25 active:scale-[0.99] transition"
                       >
                         {qaDone ? "مشاركة الآن" : "أكمل الأسئلة"}

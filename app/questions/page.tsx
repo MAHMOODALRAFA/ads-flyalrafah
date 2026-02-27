@@ -86,9 +86,9 @@ export default function QuestionsPage() {
 
   // ✅ Session-first guard
   useEffect(() => {
-    // اگر قبلاً تو همین دستگاه جواب داده شده، سریع برو share
+    // ✅ اگر لوکال میگه جواب داده شده، مستقیم برو status (نه share)
     if (hasAnsweredQuestions()) {
-      router.replace("/share");
+      router.replace("/status");
       return;
     }
 
@@ -97,6 +97,7 @@ export default function QuestionsPage() {
     (async () => {
       try {
         setBooting(true);
+
         const res = await fetch("/api/check", {
           method: "POST",
           cache: "no-store",
@@ -115,9 +116,16 @@ export default function QuestionsPage() {
         setPhone(data.user.phone);
         setPhoneState(data.user.phone || "");
 
-        // اگر وسط راه قبلاً جواب داده بود (local) الان هم ok هست، مستقیم برو share
+        // ✅ اگر سرور میگه مقصد ثبت شده => یعنی سوالات قبلاً جواب داده شده
+        if (data.user.destination) {
+          markQuestionsAnswered(); // sync local UX
+          router.replace("/status");
+          return;
+        }
+
+        // اگر وسط راه قبلاً جواب داده بود (local) الان هم ok هست، مستقیم برو status
         if (hasAnsweredQuestions()) {
-          router.replace("/share");
+          router.replace("/status");
           return;
         }
 
@@ -242,7 +250,8 @@ export default function QuestionsPage() {
       // ✅ mark answered (local UX)
       markQuestionsAnswered();
 
-      router.push("/share");
+      // ✅ بعد الإجابة نروح status حسب طلبك
+      router.push("/status");
     } finally {
       setSaving(false);
     }
