@@ -39,7 +39,9 @@ export default function AdminPanelPage() {
     totalPages: 1,
   });
 
-  const [loading, setLoading] = useState(true);
+  // ✅ FIX: لازم است false باشد تا اولین loadUsers بلاک نشود
+  const [loading, setLoading] = useState(false);
+
   const [busyId, setBusyId] = useState<string>("");
   const [error, setError] = useState<string>("");
 
@@ -66,8 +68,7 @@ export default function AdminPanelPage() {
   }
 
   async function loadUsers(page?: number, pageSize?: number, query?: string) {
-    if (loading) return;
-
+    // ✅ FIX: حذف useState از داخل تابع (Hook داخل function ممنوع است)
     setError("");
     setLoading(true);
 
@@ -105,7 +106,10 @@ export default function AdminPanelPage() {
       setPagination({
         total: Number(data.pagination?.total ?? 0),
         page: Math.max(1, Number(data.pagination?.page ?? 1)),
-        pageSize: Math.min(100, Math.max(1, Number(data.pagination?.pageSize ?? 20))),
+        pageSize: Math.min(
+          100,
+          Math.max(1, Number(data.pagination?.pageSize ?? 20))
+        ),
         totalPages: Math.max(1, Number(data.pagination?.totalPages ?? 1)),
       });
     } catch {
