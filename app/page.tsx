@@ -202,7 +202,16 @@ export default function HomePage() {
     }
   }
 
-  function handleLogout() {
+async function handleLogout(): Promise<void> {
+  try {
+    await fetch("/api/logout", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("Logout error:", error);
+  } finally {
     resetAll();
     setStarted(false);
     setPhoneState("");
@@ -210,8 +219,10 @@ export default function HomePage() {
     setLookupPhone("");
     setLookupError("");
     setQaDone(false);
-    router.refresh();
+
+    window.location.replace("/start");
   }
+}
 
   function goPrimary() {
     if (!started) {
