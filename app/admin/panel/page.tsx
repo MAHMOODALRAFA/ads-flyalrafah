@@ -96,7 +96,7 @@ export default function AdminPanelPage() {
       const data = (await res.json().catch(() => null)) as UsersResponse | null;
 
       if (!res.ok || !data || !data.ok) {
-        setError("تعذر تحميل قائمة المستخدمين");
+        setError("بارگذاری فهرست کاربران انجام نشد.");
         setUsers([]);
         setPagination((p) => ({ ...p, total: 0, totalPages: 1, page: 1 }));
         return;
@@ -113,7 +113,7 @@ export default function AdminPanelPage() {
         totalPages: Math.max(1, Number(data.pagination?.totalPages ?? 1)),
       });
     } catch {
-      setError("خطأ في الاتصال بالخادم");
+      setError("خطا در ارتباط با سرور.");
       setUsers([]);
     } finally {
       setLoading(false);
@@ -141,13 +141,13 @@ export default function AdminPanelPage() {
 
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) {
-        setError("لم يتم تحديث النقاط");
+        setError("به‌روزرسانی امتیازها انجام نشد.");
         return;
       }
 
       await loadUsers(pagination.page, pagination.pageSize, debouncedQ);
     } catch {
-      setError("خطأ في الاتصال بالخادم");
+      setError("خطا در ارتباط با سرور.");
     } finally {
       setBusyId("");
     }
@@ -156,7 +156,7 @@ export default function AdminPanelPage() {
   async function resetUser(userId: string) {
     if (!userId || busyId) return;
 
-    const ok = confirm("Reset this user points (and lastShareAt)?");
+    const ok = confirm("آیا از بازنشانی امتیازهای این کاربر (و lastShareAt) مطمئن هستید؟");
     if (!ok) return;
 
     setBusyId(userId);
@@ -178,13 +178,13 @@ export default function AdminPanelPage() {
 
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) {
-        setError("لم يتم إعادة ضبط المستخدم");
+        setError("بازنشانی کاربر انجام نشد.");
         return;
       }
 
       await loadUsers(pagination.page, pagination.pageSize, debouncedQ);
     } catch {
-      setError("خطأ في الاتصال بالخادم");
+      setError("خطا در ارتباط با سرور.");
     } finally {
       setBusyId("");
     }
@@ -219,12 +219,12 @@ export default function AdminPanelPage() {
       <div className="mx-auto w-full max-w-5xl">
         <div className="flex items-start justify-between gap-3 mb-5">
           <div>
-            <h1 className="text-2xl font-extrabold text-zinc-900">لوحة التحكم</h1>
+            <h1 className="text-2xl font-extrabold text-zinc-900">پنل مدیریت</h1>
             <p className="text-sm text-zinc-500 mt-1">
-              إدارة المستخدمين والنقاط — FlyAlrafah
+              مدیریت کاربران و امتیازها — FlyAlrafah
             </p>
             <p className="text-xs text-zinc-400 mt-1">
-              إجمالي المستخدمين:{" "}
+              تعداد کل کاربران:{" "}
               <span className="font-bold">{pagination.total}</span>
             </p>
           </div>
@@ -235,7 +235,7 @@ export default function AdminPanelPage() {
               disabled={loading}
               className="h-11 rounded-2xl px-4 bg-white border border-zinc-200 text-zinc-800 font-bold hover:bg-zinc-100 transition disabled:opacity-60"
             >
-              تحديث
+              به‌روزرسانی
             </button>
 
             <button
@@ -249,21 +249,21 @@ export default function AdminPanelPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
           <div className="rounded-2xl bg-white border border-zinc-200 p-4">
-            <div className="text-xs text-zinc-500">مستخدمون في هذه الصفحة</div>
+            <div className="text-xs text-zinc-500">تعداد کاربران در این صفحه</div>
             <div className="text-2xl font-extrabold text-zinc-900 mt-1">
               {stats.pageUsers}
             </div>
           </div>
 
           <div className="rounded-2xl bg-white border border-zinc-200 p-4">
-            <div className="text-xs text-zinc-500">مجموع نقاط هذه الصفحة</div>
+            <div className="text-xs text-zinc-500">مجموع امتیازهای این صفحه</div>
             <div className="text-2xl font-extrabold text-purple-700 mt-1">
               {stats.pagePoints}
             </div>
           </div>
 
           <div className="rounded-2xl bg-white border border-zinc-200 p-4">
-            <div className="text-xs text-zinc-500">مجموع الانضمامات (هذه الصفحة)</div>
+            <div className="text-xs text-zinc-500">مجموع پیوستن‌ها (در این صفحه)</div>
             <div className="text-2xl font-extrabold text-zinc-900 mt-1">
               {stats.pageJoins}
             </div>
@@ -274,19 +274,19 @@ export default function AdminPanelPage() {
           <div className="flex flex-col gap-3">
             <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
               <div className="flex-1">
-                <div className="text-sm font-bold text-zinc-900 mb-2">بحث</div>
+                <div className="text-sm font-bold text-zinc-900 mb-2">جست‌وجو</div>
                 <input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="ابحث برقم الهاتف أو كود الدعوة أو الاسم..."
+                  placeholder="جست‌وجو بر اساس شماره تلفن، کد دعوت یا نام..."
                   className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-purple-300"
                 />
               </div>
 
               <div className="text-sm text-zinc-500 sm:text-left">
                 {loading
-                  ? "جارٍ التحميل..."
-                  : `صفحة ${pagination.page} من ${pagination.totalPages} — النتائج: ${users.length}`}
+                  ? "در حال بارگذاری..."
+                  : `صفحه ${pagination.page} از ${pagination.totalPages} — تعداد نتایج: ${users.length}`}
               </div>
             </div>
 
@@ -297,7 +297,7 @@ export default function AdminPanelPage() {
                   disabled={loading || pagination.page === 1}
                   className="h-10 rounded-2xl px-4 bg-white border border-zinc-200 text-zinc-800 font-bold hover:bg-zinc-100 transition disabled:opacity-60"
                 >
-                  أول صفحة
+                  صفحه اول
                 </button>
 
                 <button
@@ -307,7 +307,7 @@ export default function AdminPanelPage() {
                   disabled={loading || !canPrev}
                   className="h-10 rounded-2xl px-4 bg-white border border-zinc-200 text-zinc-800 font-bold hover:bg-zinc-100 transition disabled:opacity-60"
                 >
-                  السابق
+                  قبلی
                 </button>
 
                 <button
@@ -317,12 +317,12 @@ export default function AdminPanelPage() {
                   disabled={loading || !canNext}
                   className="h-10 rounded-2xl px-4 bg-white border border-zinc-200 text-zinc-800 font-bold hover:bg-zinc-100 transition disabled:opacity-60"
                 >
-                  التالي
+                  بعدی
                 </button>
               </div>
 
               <div className="flex items-center gap-2">
-                <div className="text-xs text-zinc-500">حجم الصفحة</div>
+                <div className="text-xs text-zinc-500">اندازه صفحه</div>
                 <select
                   value={pagination.pageSize}
                   onChange={(e) => {
@@ -350,16 +350,16 @@ export default function AdminPanelPage() {
 
         <div className="rounded-2xl bg-white border border-zinc-200 overflow-hidden">
           <div className="px-4 py-3 border-b border-zinc-200 bg-zinc-50 flex items-center justify-between">
-            <div className="text-sm font-extrabold text-zinc-900">المستخدمون</div>
+            <div className="text-sm font-extrabold text-zinc-900">کاربران</div>
             <div className="text-xs text-zinc-500">
-              إجمالي: <span className="font-bold">{pagination.total}</span>
+              مجموع: <span className="font-bold">{pagination.total}</span>
             </div>
           </div>
 
           {loading ? (
-            <div className="p-6 text-center text-zinc-600">جاري التحميل...</div>
+            <div className="p-6 text-center text-zinc-600">در حال بارگذاری...</div>
           ) : users.length === 0 ? (
-            <div className="p-6 text-center text-zinc-600">لا يوجد نتائج</div>
+            <div className="p-6 text-center text-zinc-600">نتیجه‌ای یافت نشد.</div>
           ) : (
             <div className="divide-y divide-zinc-100">
               {users.map((u) => {
@@ -378,12 +378,12 @@ export default function AdminPanelPage() {
                           📞 {u.phone}
                         </div>
                         <div className="text-zinc-500">
-                          Code:{" "}
+                          کد:{" "}
                           <span className="font-bold text-zinc-900">{u.refCode}</span>
                         </div>
                         {u.name ? (
                           <div className="text-zinc-500">
-                            الاسم:{" "}
+                            نام:{" "}
                             <span className="font-bold text-zinc-900">{u.name}</span>
                           </div>
                         ) : null}
@@ -391,21 +391,21 @@ export default function AdminPanelPage() {
 
                       <div className="mt-2 grid grid-cols-3 gap-2">
                         <div className="rounded-xl bg-zinc-50 border border-zinc-200 p-3 text-center">
-                          <div className="text-[11px] text-zinc-500">Points</div>
+                          <div className="text-[11px] text-zinc-500">امتیاز</div>
                           <div className="text-lg font-extrabold text-purple-700">
                             {u.points}
                           </div>
                         </div>
 
                         <div className="rounded-xl bg-zinc-50 border border-zinc-200 p-3 text-center">
-                          <div className="text-[11px] text-zinc-500">Joins</div>
+                          <div className="text-[11px] text-zinc-500">پیوستن‌ها</div>
                           <div className="text-lg font-extrabold text-zinc-900">
                             {joins}
                           </div>
                         </div>
 
                         <div className="rounded-xl bg-zinc-50 border border-zinc-200 p-3 text-center">
-                          <div className="text-[11px] text-zinc-500">Last Share</div>
+                          <div className="text-[11px] text-zinc-500">آخرین اشتراک</div>
                           <div className="text-xs font-bold text-zinc-700" dir="ltr">
                             {u.lastShareAt
                               ? new Date(u.lastShareAt).toLocaleString()
@@ -440,7 +440,7 @@ export default function AdminPanelPage() {
                         disabled={busyId !== "" && !busy}
                         className="h-11 rounded-2xl px-4 bg-red-600 text-white font-extrabold hover:bg-red-700 transition disabled:opacity-60"
                       >
-                        {busy ? "..." : "Reset"}
+                        {busy ? "..." : "بازنشانی"}
                       </button>
                     </div>
                   </div>
@@ -451,10 +451,12 @@ export default function AdminPanelPage() {
         </div>
 
         <p className="text-center text-xs text-zinc-400 mt-4">
-این سیستم توسط محمود البلوشی طراحی، ایده‌پردازی و برنامه‌نویسی شده است.
-در فرآیند توسعه، تلاش بر این بوده که سامانه با بالاترین سطح دقت، پایداری و بهینه‌سازی ممکن پیاده‌سازی شود و عملکردی نزدیک به حداکثر ظرفیت استاندارد خود داشته باشد.
-
-بدین‌وسیله از همکاری ارزشمند آقای ابوالفضل در مسیر توسعه و تکمیل این سیستم صمیمانه قدردانی می‌شود.      </p>
+          این سیستم توسط محمود البلوشی طراحی، ایده‌پردازی و برنامه‌نویسی شده است.
+          در فرآیند توسعه، تلاش بر این بوده که سامانه با بالاترین سطح دقت، پایداری و
+          بهینه‌سازی ممکن پیاده‌سازی شود و عملکردی نزدیک به حداکثر ظرفیت استاندارد خود داشته باشد.
+          <br />
+          بدین‌وسیله از همکاری ارزشمند آقای ابوالفضل (مدیریت دفتر مسقط) در مسیر توسعه و تکمیل این سیستم صمیمانه قدردانی می‌شود.
+        </p>
       </div>
     </main>
   );
